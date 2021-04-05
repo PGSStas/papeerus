@@ -16,6 +16,14 @@ class Client:
 
     def input_cycle(self):
         while True:
+            q = input("Please, write your invite token:\n")
+            try:
+                self.client_node.establish_connection(q)
+                break
+            except ...:
+                ...
+
+        while True:
             q = input()
             ls = q.split(' ')
             if ls[0] == "quit":

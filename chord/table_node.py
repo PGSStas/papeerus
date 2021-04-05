@@ -4,6 +4,7 @@ import sys
 import threading
 
 from security.chat_cipher import ChatCipher
+from hashlib import sha1
 
 
 class TableNode:
@@ -17,7 +18,7 @@ class TableNode:
     _token_dict = {}
 
     # TODO: make registration
-    _nickname = "Serega"
+    _nickname = None
 
     def __init__(self):
         # Crypto
@@ -44,6 +45,10 @@ class TableNode:
             else:
                 connection[0].send("CODE: 001".encode())
                 continue
+            status = connection[0].recv(3)
+            if status.decode() == "REG":
+                # TODO: check if exists user with the same nickname
+                connection[0].send("CODE: 100".encode())
 
             self._mutex.acquire()
             self._sid += 1
@@ -56,8 +61,12 @@ class TableNode:
             self._threads.append(thread)
             self._mutex.release()
 
+    def join(self, node_id):
+        successor = ...
+
     def establish_connection(self, token: str):
-        address, port, key, iv, message_token = self._parse_invite_token(token)
+        address, port, key, nickname = self._parse_invite_token(token)
+        hashed_nickname = int(sha1(nickname.encode()).hexdigest(), 16) % 2**160
         if key in self._token_dict.keys():
             print("Already connected")
             return
@@ -70,14 +79,28 @@ class TableNode:
         if return_code != "CODE: 000":
             print("ERROR: Connection is not established")
             return
+        else:
+            if self._nickname is None:
+                socket_client.send("REG".encode())
+                return_code = ""
+                while return_code != "CODE: 100":  # nickname accepted
+                    q = input("Your nickname:\n")
+                    socket_client.send(str(q).encode())
+                    return_code = socket_client.recv(9).decode()
+                print("Success! You connected to user {}".format(hashed_nickname))
+                self._nickname = q
+                self.join(hashed_nickname)
+            else:
+                socket_client.send("CON".encode())
+            iv, message_token = self._parse_chat_token(socket_client.recv(64).decode())
 
         self._mutex.acquire()
         self._sid += 1
-        self._ids.append(self._sid)
+        self._ids.append(hashed_nickname)
         self._ciphers.append(ChatCipher(message_token, iv, self._nickname))
         self._peers.append((socket_client, (address, port)))
         thread = threading.Thread(target=self._receive,
-                                  args=(self._sid, socket_client, self._ciphers[-1]))
+                                  args=(hashed_nickname, socket_client, self._ciphers[-1]))
         thread.start()
         self._threads.append(thread)
         self._mutex.release()
@@ -106,6 +129,7 @@ class TableNode:
         for i in ip_list:
             invite += format(int(i), '02x')
         invite += format(self._socket_listener.getsockname()[1], '04x')
+        invite += self._nickname
 
         # TODO: Check if token is already taken in global network
 
@@ -137,10 +161,11 @@ class TableNode:
         ip = token[:8]
         port = int(token[8:12], 16)
         key = bytes.fromhex(token[12:76])
+        nickname = token[76:]
 
         parsed_ip = str(int(token[0:2], 16)) + "." + str(int(token[2:4], 16)) + \
                     "." + str(int(token[4:6], 16)) + "." + str(int(token[6:8], 16))
-        return parsed_ip, port, key
+        return parsed_ip, port, key, nickname
 
     def _parse_chat_token(self, token):
         iv = bytes.fromhex(token[:32])
@@ -160,5 +185,3 @@ class TableNode:
 
     def get_connections(self):
         pass
-
-
