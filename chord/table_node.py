@@ -78,8 +78,10 @@ class TableNode:
             key = connection[0].recv(32)
             if key in self._token_dict.keys():
                 connection[0].send("CODE: 000".encode())
+                self.log("Key accepted")
             else:
                 connection[0].send("CODE: 001".encode())
+                self.log("Invalid key {}".format(key))
                 continue
             status = connection[0].recv(3)
             nickname = connection[0].recv(32)
@@ -111,6 +113,7 @@ class TableNode:
         socket_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         socket_client.connect((address, port))
 
+        self.log("Sending key - " + str(key))
         socket_client.send(key)
         return_code = socket_client.recv(9).decode()
         if return_code != "CODE: 000":
@@ -172,9 +175,11 @@ class TableNode:
                 self.establish_connection(invite)
                 self.predecessor = self._peers[-1]
                 self.send(self._peers[-1], self._id, CommandCodes.SUCCESSOR_RESPONSE)
+                self.log("I'm predecessor of {}".format(self.predecessor))
             elif code == CommandCodes.SUCCESSOR_RESPONSE:
                 self.successor = int(data[1].decode())
                 self.successors.append(self.successor)
+                self.log("Got successor - {}".format(self.successor))
 
     def generate_invite(self):
         invite = ""
@@ -182,7 +187,6 @@ class TableNode:
         for i in ip_list:
             invite += format(int(i), '02x')
         invite += format(self._socket_listener.getsockname()[1], '04x')
-        invite += self._nickname
 
         # TODO: Check if token is already taken in global network
 
@@ -193,8 +197,11 @@ class TableNode:
             key = os.urandom(32)
 
         self.key = key
+        self._token_dict[key] = (None, None)
+        self.log("Generated key - " + str(key))
         self._mutex.release()
         invite += key.hex()
+        invite += self._nickname
         print(invite)
         return invite
 
@@ -212,7 +219,6 @@ class TableNode:
 
     @staticmethod
     def _parse_invite_token(token: str):
-        assert (len(token) == 172)
         ip = token[:8]
         port = int(token[8:12], 16)
         key = bytes.fromhex(token[12:76])
@@ -239,5 +245,7 @@ class TableNode:
         self._ciphers.pop(index)
         self._mutex.release()
 
-    def get_connections(self):
-        pass
+    def log(self, msg):
+        with open("./log.txt", "a") as log_file:
+            log_file.write("{}:{} - ".format(self._nickname, self._id) + msg + '\n')
+

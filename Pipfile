@@ -1,0 +1,27 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+backcall = "==0.2.0"
+cffi = "==1.14.5"
+cryptography = "==3.4.7"
+decorator = "==5.0.3"
+ipython = "==7.22.0"
+jedi = "==0.18.0"
+parso = "==0.8.2"
+pexpect = "==4.8.0"
+pickleshare = "==0.7.5"
+prompt-toolkit = "==3.0.18"
+ptyprocess = "==0.7.0"
+pycparser = "==2.20"
+traitlets = "==5.0.5"
+wcwidth = "==0.2.5"
+ipython_genutils = "==0.2.0"
+Pygments = "==2.8.1"
+
+[dev-packages]
+
+[requires]
+python_version = "3.8"

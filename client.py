@@ -23,11 +23,12 @@ class Client:
             elif q == "registration":
                 while True:
                     q = input("Please, write your invite token:\n")
-                    try:
-                        self.client_node.establish_connection(q)
-                        break
-                    except Exception:
-                        pass
+                    self.client_node.establish_connection(q)
+                    # try:
+                    #     self.client_node.establish_connection(q)
+                    #     break
+                    # except Exception:
+                    #     pass
                     # TODO: exception for existing nickname
 
             while True:
