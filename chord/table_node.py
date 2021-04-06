@@ -39,6 +39,13 @@ class TableNode:
         self._accept_thread = threading.Thread(target=self._accept_connection)
         self._accept_thread.start()
 
+    def create(self):
+        self.predecessor = None
+        self.successor = self._id
+        nickname = input("Your nickname:\n")
+        self._nickname = nickname
+        self._id = int(sha1(nickname.encode()).hexdigest(), 16) % 2**self._m
+
     def join(self, node_id: int):
         self.predecessor = None
         invite = self.generate_invite()
