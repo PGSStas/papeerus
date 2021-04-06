@@ -5,11 +5,12 @@ import threading
 
 from security.chat_cipher import ChatCipher
 from hashlib import sha1
+from chord.command_codes import CommandCodes
 
 
 class TableNode:
     # Temp id for sockets
-    _sid = 0
+    _m = 160
     # List of sockets, ciphers and threads for receive
     _ids = []
     _peers = []
@@ -17,14 +18,16 @@ class TableNode:
     _threads = []
     _token_dict = {}
 
-    # TODO: make registration
-    _nickname = None
-
     def __init__(self):
+        # Personal data
+        self._id = None
+        self._nickname = None
         # Crypto
         self.key = None
         # Chord data
+        self.finger_table = []
         self.successors = []
+        self.successor = None
         self.predecessor = None
         # Starting listener
         self._socket_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -36,6 +39,32 @@ class TableNode:
         self._accept_thread = threading.Thread(target=self._accept_connection)
         self._accept_thread.start()
 
+    def join(self, node_id: int):
+        self.predecessor = None
+        invite = self.generate_invite()
+        self.send(node_id, str(node_id) + " " + invite, CommandCodes.FIND_SUCCESSOR)
+
+    def closest_preceding_node(self, node_id: int):
+        for i in reversed(self.finger_table):
+            if self._id < self.finger_table[i] < node_id:
+                return self.finger_table[i]
+        return self._id
+
+    def find_successor(self, node_id: int, sender_invite: str):
+        if self._id < node_id <= self.successor:
+            self.send(self.successor, sender_invite, CommandCodes.RETURN_SUCCESSOR)
+        else:
+            next_node = self.closest_preceding_node(node_id)
+            self.send(next_node, str(node_id) + " " + sender_invite, CommandCodes.FIND_SUCCESSOR)
+
+    def stabilize(self):
+        ...
+        # TODO: page 6, fig. 6 in. Has to start periodically
+
+    def fix_fingers(self):
+        ...
+        # TODO: page 6, fig. 6 in. Has to start periodically
+
     def _accept_connection(self):
         while True:
             connection = self._socket_listener.accept()
@@ -46,27 +75,28 @@ class TableNode:
                 connection[0].send("CODE: 001".encode())
                 continue
             status = connection[0].recv(3)
+            nickname = connection[0].recv(32)
             if status.decode() == "REG":
                 # TODO: check if exists user with the same nickname
                 connection[0].send("CODE: 100".encode())
 
+            chat_token = self._generate_chat_token()
+            connection[0].send(chat_token.encode())
+
+            sid = int(sha1(nickname).hexdigest(), 16) % 2 ** self._m
+
             self._mutex.acquire()
-            self._sid += 1
-            self._ids.append(self._sid)
+            self._ids.append(sid)
             self._ciphers.append(ChatCipher(self._token_dict[key][0], self._token_dict[key][1], self._nickname))
             self._peers.append(connection)
             thread = threading.Thread(target=self._receive,
-                                      args=(self._sid, connection[0], self._ciphers[-1]))
+                                      args=(sid, connection[0], self._ciphers[-1]))
             thread.start()
             self._threads.append(thread)
             self._mutex.release()
 
-    def join(self, node_id):
-        successor = ...
-
     def establish_connection(self, token: str):
         address, port, key, nickname = self._parse_invite_token(token)
-        hashed_nickname = int(sha1(nickname.encode()).hexdigest(), 16) % 2**160
         if key in self._token_dict.keys():
             print("Already connected")
             return
@@ -87,15 +117,17 @@ class TableNode:
                     q = input("Your nickname:\n")
                     socket_client.send(str(q).encode())
                     return_code = socket_client.recv(9).decode()
-                print("Success! You connected to user {}".format(hashed_nickname))
+                print("Success! You connected to user {}".format(nickname))
                 self._nickname = q
-                self.join(hashed_nickname)
+                self._id = int(sha1(q.encode()).hexdigest(), 16) % 2 ** self._m
+                self.join(self._id)
             else:
                 socket_client.send("CON".encode())
+                socket_client.send(str(self._id).encode())
             iv, message_token = self._parse_chat_token(socket_client.recv(64).decode())
 
         self._mutex.acquire()
-        self._sid += 1
+        hashed_nickname = int(sha1(nickname.encode()).hexdigest(), 16) % 2 ** self._m
         self._ids.append(hashed_nickname)
         self._ciphers.append(ChatCipher(message_token, iv, self._nickname))
         self._peers.append((socket_client, (address, port)))
@@ -105,13 +137,13 @@ class TableNode:
         self._threads.append(thread)
         self._mutex.release()
 
-    def send(self, sid: int, message: str):
+    def send(self, sid: int, message: str, code: int = CommandCodes.TEXT_MESSAGE):
         self._mutex.acquire()
         sock = self._peers[sid][0]
         cipher = self._ciphers[sid]
         self._mutex.release()
 
-        data = cipher.serialize(message.encode())
+        data = cipher.serialize(message.encode(), code)
         sock.send(data)
 
     def _receive(self, sid: int, sock: socket.socket, cipher: ChatCipher):
@@ -121,7 +153,21 @@ class TableNode:
                 self._delete_user(sid)
                 sys.exit(0)
             data = cipher.deserialize(msg)
-            print(f"{data[0]}: {data[1].decode()}")
+            code = data[2]
+            if code == CommandCodes.TEXT_MESSAGE:
+                print(f"{data[0]}: {data[1].decode()}")
+            elif code == CommandCodes.FIND_SUCCESSOR:
+                node_id, invite = data[1].decode().split()
+                node_id = int(node_id)
+                self.find_successor(node_id, invite)
+            elif code == CommandCodes.RETURN_SUCCESSOR:
+                invite = data[1].decode()
+                self.establish_connection(invite)
+                self.predecessor = self._peers[-1]
+                self.send(self._peers[-1], self._id, CommandCodes.SUCCESSOR_RESPONSE)
+            elif code == CommandCodes.SUCCESSOR_RESPONSE:
+                self.successor = int(data[1].decode())
+                self.successors.append(self.successor)
 
     def generate_invite(self):
         invite = ""
@@ -143,6 +189,7 @@ class TableNode:
         self._mutex.release()
         invite += key.hex()
         print(invite)
+        return invite
 
     def _generate_chat_token(self):
         self._mutex.acquire()
@@ -154,9 +201,10 @@ class TableNode:
         self._token_dict[self.key] = (token, iv)
         self._mutex.release()
 
-        print(iv.hex() + token.hex())
+        return iv.hex() + token.hex()
 
-    def _parse_invite_token(self, token: str):
+    @staticmethod
+    def _parse_invite_token(token: str):
         assert (len(token) == 172)
         ip = token[:8]
         port = int(token[8:12], 16)
@@ -167,7 +215,8 @@ class TableNode:
                     "." + str(int(token[4:6], 16)) + "." + str(int(token[6:8], 16))
         return parsed_ip, port, key, nickname
 
-    def _parse_chat_token(self, token):
+    @staticmethod
+    def _parse_chat_token(token):
         iv = bytes.fromhex(token[:32])
         message_token = bytes.fromhex(token[32:])
 

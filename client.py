@@ -22,6 +22,7 @@ class Client:
                 break
             except ...:
                 ...
+            # TODO: exception for existing nickname
 
         while True:
             q = input()
