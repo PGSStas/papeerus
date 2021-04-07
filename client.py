@@ -21,15 +21,14 @@ class Client:
             if q == "create":
                 self.client_node.create()
             elif q == "registration":
-                while True:
-                    q = input("Please, write your invite token:\n")
-                    self.client_node.establish_connection(q)
-                    # try:
-                    #     self.client_node.establish_connection(q)
-                    #     break
-                    # except Exception:
-                    #     pass
-                    # TODO: exception for existing nickname
+                q = input("Please, write your invite token:\n")
+                self.client_node.establish_connection(q)
+                # try:
+                #     self.client_node.establish_connection(q)
+                #     break
+                # except Exception:
+                #     pass
+                # TODO: exception for existing nickname
 
             while True:
                 q = input()
@@ -48,4 +47,3 @@ class Client:
                 else:
                     # Send message to Client with specific ID
                     self.client_node.send(int(ls[0]), q.split(' ', 1)[1])
-
