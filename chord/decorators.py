@@ -6,6 +6,6 @@ def execute_periodically(period: int):
         def wrapper(*args, **kwargs):
             while True:
                 sleep(period)
-                func()
+                func(*args, **kwargs)
         return wrapper
     return decorator

@@ -2,7 +2,7 @@ import os
 import socket
 import sys
 import threading
-
+from hashlib import sha1
 from security.chat_cipher import ChatCipher
 from chord.table_node import TableNode
 
@@ -43,7 +43,6 @@ class Client:
                     # Connect to new client
                     self.client_node.establish_connection(ls[1])
                 elif ls[0] == "invite":
-                    self.client_node.generate_invite()
-                else:
-                    # Send message to Client with specific ID
-                    self.client_node.send(int(ls[0]), q.split(' ', 1)[1])
+                    print(self.client_node.generate_invite())
+                elif ls[0] == "info":
+                    self.client_node.print_info()
