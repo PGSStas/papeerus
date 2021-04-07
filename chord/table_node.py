@@ -52,8 +52,8 @@ class TableNode:
         b = b % self._m
         c = c % self._m
         if a < b:
-            return a <= c < b
-        return a <= c or c < b
+            return a < c < b
+        return a < c or c < b
 
     def create(self):
         self.predecessor = None
@@ -95,22 +95,20 @@ class TableNode:
         if self.predecessor is None or (self.predecessor < node_id < self._id):
             self.predecessor = node_id
 
-    @execute_periodically(1)
+    @execute_periodically(3)
     def stabilize(self):
-        self._mutex.acquire()
         if self.successor == self._id:
             if self.predecessor:
                 self.successor = self.predecessor
         else:
             self.send(self.successor, str(self._id), CommandCodes.PREDECESSOR_REQUEST)
-        self._mutex.release()
 
     def continue_stabilizing(self, s_predecessor):
         if s_predecessor and self.inrange(s_predecessor, self._id, self.successor):
             self.successor = s_predecessor
         self.send(self.successor, str(self._id), CommandCodes.NOTIFY)
 
-    @execute_periodically(3)
+    @execute_periodically(5)
     def fix_fingers(self):
         if self.successor != self._id:
             self.fixing_fingers = True
