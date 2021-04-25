@@ -4,7 +4,10 @@ import sys
 import threading
 from hashlib import sha1
 from security.chat_cipher import ChatCipher
+import message
 from chord.table_node import TableNode
+from message.message import MessageSerializer
+from message.split import Split
 
 
 class Client:
@@ -46,3 +49,21 @@ class Client:
                     print(self.client_node.generate_invite())
                 elif ls[0] == "info":
                     self.client_node.print_info()
+                elif ls[0] == "picture":
+                    parser = MessageSerializer()
+                    mess = parser.serialize(ls[1], 'picture')
+                    splitter = Split()
+                    obj = splitter.split(mess)
+                    self.client_node.send_all(obj)
+                elif ls[0] == "video":
+                    parser = MessageSerializer()
+                    mess = parser.serialize(ls[1], 'video')
+                    splitter = Split()
+                    obj = splitter.split(mess)
+                    self.client_node.send_all(obj)
+                else:
+                    parser = MessageSerializer()
+                    mess = parser.serialize(q, 'text')
+                    splitter = Split()
+                    obj = splitter.split(mess)
+                    self.client_node.send_all(obj)
