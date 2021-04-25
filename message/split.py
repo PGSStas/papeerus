@@ -4,19 +4,18 @@ import random
 
 class Split:
     def splitId(self, message: str):
-        i = ""
-        j = ""
+        id = ""
+        mes = ""
         kol = 0
         for ch in message:
-            if ch == '\0':
-                if kol == 0:
-                    kol = 1
-                    continue
+            if ch == '\0' and kol == 0:
+                kol = 1
+                continue
             if kol == 0:
-                i += ch
+                id += ch
             else:
-                j += ch
-        return int(i), j
+                mes += ch
+        return int(id), mes
 
     def split(self, message: str):
         ans = [""]
@@ -49,10 +48,9 @@ class Split:
             second = ""
             ok = False
             for j in i:
-                if j == '\0':
-                    if ok == False:
-                        ok = True
-                        continue
+                if j == '\0' and ok == False:
+                    ok = True
+                    continue
                 if ok:
                     second += j
                 else:

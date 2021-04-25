@@ -217,16 +217,16 @@ class TableNode:
 
         data = cipher.serialize(message.encode(), code)
         arr = bytearray()
-        i = len(data) // 256 ** 3
-        j = (len(data) // 256 ** 2) % 256
-        k = (len(data) // 256) % 256
-        l = len(data) % 256
-        arr.append(i)
-        arr.append(j)
-        arr.append(k)
-        arr.append(l)
-        for i in data:
-            arr.append(i)
+        first_byte = len(data) // 256 ** 3
+        second_byte = (len(data) // 256 ** 2) % 256
+        third_byte = (len(data) // 256) % 256
+        fourth_byte = len(data) % 256
+        arr.append(first_byte)
+        arr.append(second_byte)
+        arr.append(third_byte)
+        arr.append(fourth_byte)
+        for first_byte in data:
+            arr.append(first_byte)
         while len(arr) != 4096:
             arr.append(0)
         sock.send(arr)

@@ -1,6 +1,5 @@
 class MessageSerializer:
     def serialize(self, message, type):
-        # print("loh")
         if type == 'text':
             return type + message
         if type == "picture":
