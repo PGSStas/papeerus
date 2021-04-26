@@ -217,14 +217,7 @@ class TableNode:
 
         data = cipher.serialize(message.encode(), code)
         arr = bytearray()
-        first_byte = len(data) // 256 ** 3
-        second_byte = (len(data) // 256 ** 2) % 256
-        third_byte = (len(data) // 256) % 256
-        fourth_byte = len(data) % 256
-        arr.append(first_byte)
-        arr.append(second_byte)
-        arr.append(third_byte)
-        arr.append(fourth_byte)
+        arr += len(data).to_bytes(4, "little")
         for first_byte in data:
             arr.append(first_byte)
         while len(arr) != 4096:
@@ -275,7 +268,7 @@ class TableNode:
             message = splitter.construct(self.storage[id])
             # print(message,42)
             parser = MessageSerializer()
-            ans = parser.deserialize(message)
+            ans = parser.deserializeMessage(message)
             if ans[0] == "text":
                 print(ans[1])
 
@@ -290,8 +283,7 @@ class TableNode:
                 for i in buf:
                     msg.append(i)
             # print(len(msg))
-            i, j, k, q = msg[0], msg[1], msg[2], msg[3]
-            leni = i * 256 ** 3 + j * 256 ** 2 + k * 256 + q
+            leni = int.from_bytes(msg[:4], "little")
             # print(leni)
             true_msg = bytearray()
             for i in range(leni):
