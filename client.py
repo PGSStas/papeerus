@@ -51,19 +51,19 @@ class Client:
                     self.client_node.print_info()
                 elif ls[0] == "picture":
                     parser = MessageSerializer()
-                    mess = parser.serialize(ls[1], 'picture')
+                    mess = parser.serializeMessage(ls[1], 'picture')
                     splitter = Split()
                     obj = splitter.split(mess)
                     self.client_node.send_all(obj)
                 elif ls[0] == "video":
                     parser = MessageSerializer()
-                    mess = parser.serialize(ls[1], 'video')
+                    mess = parser.serializeMessage(ls[1], 'video')
                     splitter = Split()
                     obj = splitter.split(mess)
                     self.client_node.send_all(obj)
                 else:
                     parser = MessageSerializer()
-                    mess = parser.serialize(q, 'text')
+                    mess = parser.serializeMessage(q, 'text')
                     splitter = Split()
                     obj = splitter.split(mess)
                     self.client_node.send_all(obj)

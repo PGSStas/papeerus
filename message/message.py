@@ -1,5 +1,5 @@
 class MessageSerializer:
-    def serialize(self, message, type):
+    def serializeMessage(self, message, type):
         if type == 'text':
             return type + message
         if type == "picture":
@@ -21,7 +21,7 @@ class MessageSerializer:
             # print((type+binary_str).__class__)
             return (type + binary_str)
 
-    def deserialize(self, message: str):
+    def deserializeMessage(self, message: str):
         if len(message) > 4 and message[:4] == "text":
             return ["text", message[4:]]
         if len(message) > 7 and message[:7] == "picture":
