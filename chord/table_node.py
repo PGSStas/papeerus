@@ -266,7 +266,7 @@ class TableNode:
         who = data[0]
         what = data[1]
         parser = MessageSerializer()
-        ans = parser.deserializeMessage(what)
+        ans = parser.deserialize_message(what)
         if ans[0] == "text":
             print(ans[1])
 
@@ -281,8 +281,7 @@ class TableNode:
             leni = int.from_bytes(buf[:4], "little")
             while len(true_msg) != leni:
                 buf = sock.recv(leni - len(msg))
-                for i in buf:
-                    true_msg.append(i)
+                true_msg += buf
             msg = true_msg
             data = cipher.deserialize(msg)
             code = data[2]
