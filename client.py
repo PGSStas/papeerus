@@ -60,4 +60,5 @@ class Client:
                 else:
                     parser = MessageSerializer()
                     mess = parser.serialize_message(q, 'text')
+
                     self.client_node.send_all([mess])
