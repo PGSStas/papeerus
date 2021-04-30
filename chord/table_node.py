@@ -220,14 +220,27 @@ class TableNode:
         arr += len(data).to_bytes(4, "little")
         for first_byte in data:
             arr.append(first_byte)
-        while len(arr) != 4096:
-            arr.append(0)
+        sock.send(arr)
+
+    def send_bytes(self, sid: int, message: bytes, code: int = CommandCodes.TEXT_MESSAGE):
+        if sid == self._id:
+            self.log("sending to itself")
+            return
+        self._mutex.acquire()
+        sock = self._peers[sid][0]
+        cipher = self._ciphers[sid]
+        self._mutex.release()
+        data = cipher.serialize(bytes(message), code)
+        arr = bytearray()
+        arr += len(data).to_bytes(4, "little")
+        for first_byte in data:
+            arr.append(first_byte)
         sock.send(arr)
 
     def send_all(self, message: list):
         for i in self.get_connections():
             for j in message:
-                self.send(i, j)
+                self.send_bytes(i, j)
 
     def _successor_response(self, successor):
         if not self.fixing_fingers:
@@ -251,43 +264,24 @@ class TableNode:
 
     def receive_message(self, data):
         who = data[0]
-        what = data[1].decode()
-
-        splitter = Split()
-        id, mess = splitter.splitId(what)
-        if id not in self.storage:
-            self.storage[id] = []
-        self.storage[id].append(mess)
-        if mess[0] == '\0':
-            head = mess[1:]
-            count, date = splitter.splitId(head)
-            # print(count,42,date)
-            self.count[id] = count
-
-        if id in self.count and len(self.storage[id]) == self.count[id] + 1:
-            message = splitter.construct(self.storage[id])
-            # print(message,42)
-            parser = MessageSerializer()
-            ans = parser.deserializeMessage(message)
-            if ans[0] == "text":
-                print(ans[1])
+        what = data[1]
+        parser = MessageSerializer()
+        ans = parser.deserialize_message(what)
+        if ans[0] == "text":
+            print(ans[1])
 
     def _receive(self, sid: int, sock: socket.socket, cipher: ChatCipher):
         while True:
             msg = bytearray()
-            while len(msg) != 4096:
-                buf = sock.recv(4096 - len(msg))
-                if buf == b"":
-                    self._delete_user(sid)
-                    sys.exit(0)
-                for i in buf:
-                    msg.append(i)
-            # print(len(msg))
-            leni = int.from_bytes(msg[:4], "little")
-            # print(leni)
+            buf = sock.recv(4)
+            if buf == b"":
+                self._delete_user(sid)
+                sys.exit(0)
             true_msg = bytearray()
-            for i in range(leni):
-                true_msg.append(msg[i + 4])
+            leni = int.from_bytes(buf[:4], "little")
+            while len(true_msg) != leni:
+                buf = sock.recv(leni - len(msg))
+                true_msg += buf
             msg = true_msg
             data = cipher.deserialize(msg)
             code = data[2]
