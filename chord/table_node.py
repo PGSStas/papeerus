@@ -14,7 +14,7 @@ from chord.command_handler import CommandHandler
 
 class TableNode:
     # Temp id for sockets
-    _m = 160
+    _m = 2 ** 160
     # List of sockets, ciphers and threads for receive
     _ids = []
     _peers = {}
@@ -28,8 +28,10 @@ class TableNode:
         self._id = None
         self._nickname = None
         self._invite = None
+
         # Crypto
         self.key = None
+
         # Chord data
         self.finger_table = []
         self.finger_num = 0
@@ -41,6 +43,7 @@ class TableNode:
         self.predecessor_thread = None  # TODO: check if predecessor (or another node) is dead
         self.fixing_fingers = False
         self.command_handler = CommandHandler(self)
+
         # Starting listener
         self._socket_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket_listener.bind(("localhost", 0))
@@ -236,34 +239,20 @@ class TableNode:
         return True, None
 
     def send(self, sid: int, message: str, code: int = CommandCodes.TEXT_MESSAGE):
-        if sid == self._id:
-            self.log("sending to itself")
-            return
-        self._mutex.acquire()
-        sock = self._peers[sid][0]
-        cipher = self._ciphers[sid]
-        self._mutex.release()
-
-        data = cipher.serialize(message.encode(), code)
-        arr = bytearray()
-        arr += len(data).to_bytes(4, "little")
-        for first_byte in data:
-            arr.append(first_byte)
-        sock.send(arr)
+        self.send_bytes(sid, message.encode(), code)
 
     def send_bytes(self, sid: int, message: bytes, code: int = CommandCodes.TEXT_MESSAGE):
         if sid == self._id:
             self.log("sending to itself")
             return
+
         self._mutex.acquire()
         sock = self._peers[sid][0]
         cipher = self._ciphers[sid]
         self._mutex.release()
+
         data = cipher.serialize(bytes(message), code)
-        arr = bytearray()
-        arr += len(data).to_bytes(4, "little")
-        for first_byte in data:
-            arr.append(first_byte)
+        arr = len(data).to_bytes(4, "little") + data
         sock.send(arr)
 
     def send_all(self, message: list):

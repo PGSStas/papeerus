@@ -28,9 +28,9 @@ class ChatCipher:
         return up_data
 
     def serialize(self, message: bytes, code: int = 0):
-        data = (self.encrypt_message(self.src.encode()), self.encrypt_message(message), code)
+        data = (self.encrypt_message(self.src.encode()), self.encrypt_message(message), code, self.token)
         return pickle.dumps(data)
 
     def deserialize(self, data: bytes):
         p_data = pickle.loads(data)
-        return self.decrypt_message(p_data[0]).decode(), self.decrypt_message(p_data[1]), p_data[2]
+        return self.decrypt_message(p_data[0]).decode(), self.decrypt_message(p_data[1]), p_data[2], p_data[3]
