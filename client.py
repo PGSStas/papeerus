@@ -1,10 +1,4 @@
 import os
-import socket
-import sys
-import threading
-from hashlib import sha1
-from security.chat_cipher import ChatCipher
-import message
 from chord.table_node import TableNode
 from message.message import MessageSerializer
 from message.split import Split
