@@ -14,13 +14,15 @@ from chord.command_handler import CommandHandler
 
 class TableNode:
     # Temp id for sockets
-    _m = 2 ** 160
+    _m = 160
+
     # List of sockets, ciphers and threads for receive
     _ids = []
     _peers = {}
     _ciphers = {}
     _threads = []
     _token_dict = {}
+    _successor_query = {}
 
     def __init__(self):
         print(os.getpid())
@@ -32,17 +34,13 @@ class TableNode:
         # Crypto
         self.key = None
 
-        # Chord data
-        self.finger_table = []
-        self.finger_num = 0
-        self.successors = []
-        self.successor = None
+        # Chord
         self.predecessor = None
-        self.stabilization_thread = None
-        self.finger_thread = None
-        self.predecessor_thread = None  # TODO: check if predecessor (or another node) is dead
-        self.fixing_fingers = False
-        self.command_handler = CommandHandler(self)
+        self.successor = None
+        self._command_handler = CommandHandler(self)
+        self._fingers = []
+        self._finger_num = 0
+        self._fixing_fingers = False
 
         # Starting listener
         self._socket_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -53,71 +51,100 @@ class TableNode:
 
         self._accept_thread = threading.Thread(target=self._accept_connection)
         self._accept_thread.start()
-        # message
+
+        # Message
         self.storage = {}
         self.count = {}
 
-    def inrange(self, c, a, b):
-        a = a % self._m
-        b = b % self._m
-        c = c % self._m
+    @staticmethod
+    def in_range(c: int, a: int, b: int):
         if a < b:
-            return a < c < b
-        return a < c or c < b
+            return a < c <= b
+        return a < c or c <= b
 
-    def create(self):
-        self.predecessor = None
-        nickname = input("Your nickname:\n")
-        self._nickname = nickname
-        self._id = int(sha1(nickname.encode()).hexdigest(), 16) % 2 ** self._m
-        self.successor = self._id
+    def _start_threads(self):
         thread = threading.Thread(target=self.stabilize)
         thread.start()
         thread = threading.Thread(target=self.fix_fingers)
         thread.start()
 
-    def join(self, node_id: int):
+    def create(self):
+        nickname = input("Enter your nickname:\n")
+        self._nickname = nickname
+        self._id = int(sha1(nickname.encode()).hexdigest(), 16) % (2 ** self._m)
+
+        self.successor = self._id
         self.predecessor = None
+        self._fingers = [self._id] * self._m
+
+        self._start_threads()
+
+    def join(self, node_id: int):
         if self._invite:
             invite = self._invite
         else:
             invite = self.generate_invite()
-        self.send(node_id, str(node_id) + " " + invite, CommandCodes.FIND_SUCCESSOR)
+        key = os.urandom(32).hex()
 
-    def closest_preceding_node(self, node_id: int):
-        for finger in reversed(self.finger_table):
-            if self.inrange(finger, self._id, node_id):
+        self._fingers = [self._id] * self._m
+        self._successor_query[key] = -1
+        self.send(node_id, str(self._id) + " " + str(self._id) + " " +
+                  key + " " + invite, CommandCodes.FIND_SUCCESSOR)
+
+    def find_successor(self, x: int, sender: int, key: str, invite: str):
+        self._mutex.acquire()
+        # self.log(f"{x}, {sender}, {self._id}, {self.successor}")
+        if TableNode.in_range(x, self._id, self.successor):
+            node_id = self._id
+            successor_id = self.successor
+            self._mutex.release()
+
+            if node_id == successor_id:
+                self.establish_connection(invite)
+            else:
+                self.send(successor_id, invite, CommandCodes.ESTABLISH_WITH)
+            self.send(sender, str(self.successor) + " " + key, CommandCodes.RETURN_SUCCESSOR)
+        else:
+            n = self._closest_preceding(x)
+            if n == self._id:
+                self._mutex.release()
+                self.establish_connection(invite)
+                self.send(sender, str(self.successor) + " " + key, CommandCodes.RETURN_SUCCESSOR)
+            else:
+                self._successor_query[key] = sender
+                self._mutex.release()
+                self.send(n, str(x) + " " + str(self._id) + " " + key + " " + invite,
+                          CommandCodes.FIND_SUCCESSOR)
+
+    def _closest_preceding(self, x: int) -> int:
+        for finger in reversed(self._fingers):
+            if TableNode.in_range(finger, self._id, x):
                 return finger
         return self._id
 
-    def find_successor(self, node_id: int, sender_invite: str):
+    def return_successor(self, successor: int, key: str):
         self._mutex.acquire()
-        if self._id == self.successor and node_id == self.successor:  # first connection to the ring
-            self.predecessor = self._ids[0]
+        sender = self._successor_query.pop(key)
+        if sender > 0:
             self._mutex.release()
-            self.send(self._ids[0], str(self._id), CommandCodes.SUCCESSOR_RESPONSE)
-        elif self.inrange(node_id, self._id, self.successor):
+            self.send(sender, str(successor) + " " + key, CommandCodes.RETURN_SUCCESSOR)
+        elif sender == -1:
+            self.successor = successor
+            self._start_threads()
+            print("GG")
             self._mutex.release()
-            self.send(self.successor, sender_invite, CommandCodes.RETURN_SUCCESSOR)
-        else:
+        elif sender == -2:
+            self._fingers[self._finger_num] = successor
+            self._finger_num = (self._finger_num + 1) % self._m
             self._mutex.release()
-            next_node = self.closest_preceding_node(node_id)
-            if next_node != self._id:
-                self.send(next_node, str(node_id) + " " + sender_invite, CommandCodes.FIND_SUCCESSOR)
-            else:
-                is_connected, node = self.establish_connection(sender_invite)
-                if is_connected:
-                    self.send(self._ids[-1], str(self._id), CommandCodes.SUCCESSOR_RESPONSE)
-                else:
-                    self.send(node, str(self._id), CommandCodes.SUCCESSOR_RESPONSE)
 
     def notify(self, node_id):
         self._mutex.acquire()
-        if self.predecessor is None or self.inrange(node_id, self.predecessor, self._id):
+        if self.predecessor is None or self.in_range(node_id, self.predecessor, self._id):
             self.predecessor = node_id
         self._mutex.release()
 
-    @execute_periodically(3)
+    @execute_periodically(1)
     def stabilize(self):
         self._mutex.acquire()
         if self.successor == self._id:
@@ -130,10 +157,11 @@ class TableNode:
                 invite = self._invite
             else:
                 invite = self.generate_invite()
-            self.send(self.successor, str(self._id) + " " + invite, CommandCodes.PREDECESSOR_REQUEST)
+
+            self.send(self.successor, f"{self._id} {invite}", CommandCodes.PREDECESSOR_REQUEST)
 
     def continue_stabilizing(self, s_predecessor):
-        if s_predecessor and (self.inrange(s_predecessor, self._id, self.successor) or
+        if s_predecessor and (self.in_range(s_predecessor, self._id, self.successor) or
                               self.predecessor == self.successor):
             self._mutex.acquire()
             self.successor = s_predecessor
@@ -144,13 +172,16 @@ class TableNode:
     def fix_fingers(self):
         self._mutex.acquire()
         if self.successor != self._id:
-            self.fixing_fingers = True
+            self._fixing_fingers = True
             self._mutex.release()
             if self._invite:
                 invite = self._invite
             else:
                 invite = self.generate_invite()
-            self.send(self.successor, str(int(self._id + 2 ** (self.finger_num - 1))) + " " + invite,
+            key = os.urandom(32).hex()
+            self._successor_query[key] = -2
+            finger = int(self._id + 2 ** (self._finger_num - 1))
+            self.send(self.successor, f"{finger} {self._id} {key} {invite}",
                       CommandCodes.FIND_SUCCESSOR)
         if self._mutex.locked():
             self._mutex.release()
@@ -177,7 +208,7 @@ class TableNode:
             chat_token = self._generate_chat_token()
             connection[0].send(chat_token.encode())
 
-            sid = int(sha1(nickname).hexdigest(), 16) % 2 ** self._m
+            sid = int(sha1(nickname).hexdigest(), 16) % (2 ** self._m)
 
             self._mutex.acquire()
             self._ids.append(sid)
@@ -191,7 +222,8 @@ class TableNode:
 
     def establish_connection(self, token: str) -> Tuple[bool, Any]:
         address, port, key, nickname = self._parse_invite_token(token)
-        hashed_nickname = int(sha1(nickname.encode()).hexdigest(), 16) % 2 ** self._m
+        hashed_nickname = int(sha1(nickname.encode()).hexdigest(), 16) % (2 ** self._m)
+
         if key in self._token_dict.keys() or hashed_nickname in self._ids:
             self.log("Already connected")
             return False, hashed_nickname
@@ -206,21 +238,22 @@ class TableNode:
         if return_code != "CODE: 000":
             print("ERROR: Connection is not established")
             return False, None
+
+        if self._nickname is None:
+            is_reg = True
+            socket_client.send("REG".encode())
+            return_code = ""
+            while return_code != "CODE: 100":  # nickname accepted
+                q = input("Your nickname:\n")
+                socket_client.send(str(q).encode())
+                return_code = socket_client.recv(9).decode()
+            self._nickname = q
+            self._id = int(sha1(q.encode()).hexdigest(), 16) % (2 ** self._m)
         else:
-            if self._nickname is None:
-                is_reg = True
-                socket_client.send("REG".encode())
-                return_code = ""
-                while return_code != "CODE: 100":  # nickname accepted
-                    q = input("Your nickname:\n")
-                    socket_client.send(str(q).encode())
-                    return_code = socket_client.recv(9).decode()
-                self._nickname = q
-                self._id = int(sha1(q.encode()).hexdigest(), 16) % 2 ** self._m
-            else:
-                socket_client.send("CON".encode())
-                socket_client.send(str(self._nickname).encode())
-            iv, message_token = self._parse_chat_token(socket_client.recv(96).decode())
+            socket_client.send("CON".encode())
+            socket_client.send(str(self._nickname).encode())
+
+        iv, message_token = self._parse_chat_token(socket_client.recv(96).decode())
 
         self._mutex.acquire()
         self._ids.append(hashed_nickname)
@@ -230,6 +263,7 @@ class TableNode:
                                   args=(hashed_nickname, socket_client, self._ciphers[hashed_nickname]))
         thread.start()
         self._threads.append(thread)
+
         self._mutex.release()
 
         if is_reg:
@@ -266,25 +300,29 @@ class TableNode:
         parser = MessageSerializer()
         ans = parser.deserialize_message(what)
         if ans[0] == "text":
-            print(ans[1])
+            print(who + ":", ans[1])
+        elif ans[0] == "video":
+            print(who + " sends you a video message")
+        elif ans[0] == "picture":
+            print(who + " sends you an image")
 
     def _receive(self, sid: int, sock: socket.socket, cipher: ChatCipher):
         while True:
-            msg = bytearray()
             buf = sock.recv(4)
             if buf == b"":
                 self._delete_user(sid)
                 sys.exit(0)
-            true_msg = bytearray()
-            leni = int.from_bytes(buf[:4], "little")
-            while len(true_msg) != leni:
-                buf = sock.recv(leni - len(msg))
-                true_msg += buf
-            msg = true_msg
-            data = cipher.deserialize(msg)
-            code = data[2]
 
-            self.command_handler.handle_commands(code, data)
+            leni = int.from_bytes(buf, "little")
+            true_msg = b""
+            while leni != 0:
+                read_sz = min(leni, 4096)
+                true_msg += sock.recv(read_sz)
+                leni -= read_sz
+            data = cipher.deserialize(true_msg)
+            code = data[2]
+            self.log(str(data))
+            self._command_handler.handle_commands(code, data)
 
     def generate_invite(self):
         invite = ""

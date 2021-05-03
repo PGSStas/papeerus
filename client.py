@@ -14,10 +14,10 @@ class Client:
     def input_cycle(self):
 
         while True:
-            q = input("create - create own ring; registration - join to the known ring\n")
-            if q == "create":
+            q = input("c - create own ring; r - join to the known ring\n")
+            if q == "c":
                 self.client_node.create()
-            elif q == "registration":
+            elif q == "r":
                 q = input("Please, write your invite token:\n")
                 self.client_node.establish_connection(q)
                 # try:

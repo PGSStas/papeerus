@@ -10,3 +10,4 @@ class CommandCodes:
     PREDECESSOR_RESPONSE = 5
     NOTIFY = 6
     PREDECESSOR_CALLBACK = 7
+    ESTABLISH_WITH = 8
