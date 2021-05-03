@@ -109,6 +109,7 @@ class TableNode:
             if n == self._id:
                 self._mutex.release()
                 self.establish_connection(invite)
+                self.send(self.successor, invite, CommandCodes.ESTABLISH_WITH)
                 self.send(sender, str(self.successor) + " " + key, CommandCodes.RETURN_SUCCESSOR)
             else:
                 self._successor_query[key] = sender
@@ -118,7 +119,7 @@ class TableNode:
 
     def _closest_preceding(self, x: int) -> int:
         for finger in reversed(self._fingers):
-            if TableNode.in_range(finger, self._id, x):
+            if finger and TableNode.in_range(finger, self._id, x):
                 return finger
         return self._id
 
@@ -131,7 +132,7 @@ class TableNode:
         elif sender == -1:
             self.successor = successor
             self._start_threads()
-            print("GG")
+            print("Successor received")
             self._mutex.release()
         elif sender == -2:
             self._fingers[self._finger_num] = successor
@@ -168,7 +169,7 @@ class TableNode:
             self._mutex.release()
         self.send(self.successor, str(self._id), CommandCodes.NOTIFY)
 
-    @execute_periodically(5)
+    @execute_periodically(1)
     def fix_fingers(self):
         self._mutex.acquire()
         if self.successor != self._id:
