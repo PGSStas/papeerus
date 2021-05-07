@@ -166,8 +166,9 @@ class TableNode:
             self.send(self.successor, f"{self._id} {invite}", CommandCodes.PREDECESSOR_REQUEST)
 
     def continue_stabilizing(self, s_predecessor):
-        if s_predecessor and (self.in_range(s_predecessor, self._id, self.successor) or
-                              self.predecessor == self.successor):
+        if s_predecessor != self._id and \
+                s_predecessor and (self.in_range(s_predecessor, self._id, self.successor)
+                                   or self.predecessor == self.successor):
             self._mutex.acquire()
             self.successor = s_predecessor
             self._mutex.release()
