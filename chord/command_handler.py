@@ -38,6 +38,18 @@ class CommandHandler:
     def _establish_with(self, data):
         self.node.establish_connection(data[1].decode())
 
+    def _pass_message(self, data):
+        x, message = data[1].decode().split(" ", 1)
+        self.node.pass_message(int(x), message)
+
+    def _store_message(self, data):
+        print("Zhuzhuz", data[1].decode())
+        x, message = data[1].decode().split(" ", 1)
+        self.node.store_message(int(x), message)
+
+    def _request_message(self, data):
+        pass
+
     def handle_commands(self, code, data):
         if code == CommandCodes.TEXT_MESSAGE:
             self.node.receive_message(data)
@@ -47,9 +59,6 @@ class CommandHandler:
 
         elif code == CommandCodes.RETURN_SUCCESSOR:
             self._return_successor(data)
-
-        elif code == CommandCodes.SUCCESSOR_RESPONSE:
-            self._successor_response(int(data[1].decode()))
 
         elif code == CommandCodes.PREDECESSOR_REQUEST:
             self._predecessor_request(data)
@@ -65,3 +74,9 @@ class CommandHandler:
 
         elif code == CommandCodes.ESTABLISH_WITH:
             self._establish_with(data)
+
+        elif code == CommandCodes.PASS_MESSAGE:
+            self._pass_message(data)
+
+        elif code == CommandCodes.STORE_MESSAGE:
+            self._store_message(data)

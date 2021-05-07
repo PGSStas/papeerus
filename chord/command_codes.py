@@ -1,13 +1,16 @@
 from enum import Enum
 
 
-class CommandCodes:
+class CommandCodes(Enum):
     TEXT_MESSAGE = 0
     FIND_SUCCESSOR = 1
     RETURN_SUCCESSOR = 2
-    SUCCESSOR_RESPONSE = 3
     PREDECESSOR_REQUEST = 4
     PREDECESSOR_RESPONSE = 5
     NOTIFY = 6
     PREDECESSOR_CALLBACK = 7
     ESTABLISH_WITH = 8
+    PASS_MESSAGE = 9
+    STORE_MESSAGE = 10
+    CHAT_REQUEST = 11
+    CHAT_RESPONSE = 12

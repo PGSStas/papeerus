@@ -4,6 +4,7 @@ import sys
 import threading
 from typing import Any, Tuple
 
+from chord.message_container import MessageContainer
 from security.chat_cipher import ChatCipher
 from hashlib import sha1
 from chord.command_codes import CommandCodes
@@ -28,7 +29,7 @@ class TableNode:
         print(os.getpid())
         # Personal data
         self._id = None
-        self._nickname = None
+        self.nickname = None
         self._invite = None
 
         # Crypto
@@ -41,6 +42,9 @@ class TableNode:
         self._fingers = []
         self._finger_num = 0
         self._fixing_fingers = False
+
+        # MessageContainer
+        self._message_container = MessageContainer()
 
         # Starting listener
         self._socket_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -70,7 +74,7 @@ class TableNode:
 
     def create(self):
         nickname = input("Enter your nickname:\n")
-        self._nickname = nickname
+        self.nickname = nickname
         self._id = int(sha1(nickname.encode()).hexdigest(), 16) % (2 ** self._m)
 
         self.successor = self._id
@@ -187,6 +191,26 @@ class TableNode:
         if self._mutex.locked():
             self._mutex.release()
 
+    def pass_message(self, x: int, message: bytes):
+        self._mutex.acquire()
+        if TableNode.in_range(x, self._id, self.successor):
+            successor_id = self.successor
+            print("Pass 1")
+            self._mutex.release()
+            self.send(successor_id, f"{x} {message}", CommandCodes.STORE_MESSAGE)
+        else:
+            n = self._closest_preceding(x)
+            print("Pass 2")
+            if n == self._id:
+                self._mutex.release()
+                self.send(self.successor, f"{x} {message}", CommandCodes.STORE_MESSAGE)
+            else:
+                self._mutex.release()
+                self.send(self.successor, f"{x} {message}", CommandCodes.PASS_MESSAGE)
+
+    def store_message(self, x: int, message: bytes):
+        self._message_container.add_message(x, message)
+
     def _accept_connection(self):
         while True:
             connection = self._socket_listener.accept()
@@ -213,7 +237,7 @@ class TableNode:
 
             self._mutex.acquire()
             self._ids.append(sid)
-            self._ciphers[sid] = ChatCipher(self._token_dict[key][0], self._token_dict[key][1], self._nickname)
+            self._ciphers[sid] = ChatCipher(self._token_dict[key][0], self._token_dict[key][1], self.nickname)
             self._peers[sid] = connection
             thread = threading.Thread(target=self._receive,
                                       args=(sid, connection[0], self._ciphers[sid]))
@@ -240,7 +264,7 @@ class TableNode:
             print("ERROR: Connection is not established")
             return False, None
 
-        if self._nickname is None:
+        if self.nickname is None:
             is_reg = True
             socket_client.send("REG".encode())
             return_code = ""
@@ -248,17 +272,17 @@ class TableNode:
                 q = input("Your nickname:\n")
                 socket_client.send(str(q).encode())
                 return_code = socket_client.recv(9).decode()
-            self._nickname = q
+            self.nickname = q
             self._id = int(sha1(q.encode()).hexdigest(), 16) % (2 ** self._m)
         else:
             socket_client.send("CON".encode())
-            socket_client.send(str(self._nickname).encode())
+            socket_client.send(str(self.nickname).encode())
 
         iv, message_token = self._parse_chat_token(socket_client.recv(96).decode())
 
         self._mutex.acquire()
         self._ids.append(hashed_nickname)
-        self._ciphers[hashed_nickname] = ChatCipher(message_token, iv, self._nickname)
+        self._ciphers[hashed_nickname] = ChatCipher(message_token, iv, self.nickname)
         self._peers[hashed_nickname] = (socket_client, (address, port))
         thread = threading.Thread(target=self._receive,
                                   args=(hashed_nickname, socket_client, self._ciphers[hashed_nickname]))
@@ -273,12 +297,17 @@ class TableNode:
 
         return True, None
 
-    def send(self, sid: int, message: str, code: int = CommandCodes.TEXT_MESSAGE):
+    def send_chat_message(self, key: bytes, message: bytes):
+        key = int(sha1(key).hexdigest(), 16) % (2 ** self._m)
+        print(f"CHAT MESSAGE: {key} {message}")
+        self.send(self._id, f"{key} {message}", CommandCodes.PASS_MESSAGE)
+
+    def send(self, sid: int, message: str, code: CommandCodes = CommandCodes.TEXT_MESSAGE):
         self.send_bytes(sid, message.encode(), code)
 
-    def send_bytes(self, sid: int, message: bytes, code: int = CommandCodes.TEXT_MESSAGE):
+    def send_bytes(self, sid: int, message: bytes, code: CommandCodes = CommandCodes.TEXT_MESSAGE):
         if sid == self._id:
-            self.log("sending to itself")
+            self._command_handler.handle_commands(code, (self.nickname, message, code, None))
             return
 
         self._mutex.acquire()
@@ -345,7 +374,7 @@ class TableNode:
         self.log("Generated key - " + str(key))
         self._mutex.release()
         invite += key.hex()
-        invite += self._nickname
+        invite += self.nickname
         self._invite = invite
         return invite
 
@@ -391,7 +420,7 @@ class TableNode:
 
     def log(self, msg):
         with open("./log.txt", "a") as log_file:
-            log_file.write("{}:{} - ".format(self._nickname, self._id) + msg + '\n')
+            log_file.write("{}:{} - ".format(self.nickname, self._id) + msg + '\n')
 
     def print_info(self):
         print("Id: ", self._id)
