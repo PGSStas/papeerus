@@ -41,11 +41,12 @@ class TableNode:
 
         # Chord
         self.predecessor = None
-        self.successor = None
+        self.successors = [None] * 5
         self._command_handler = CommandHandler(self)
         self._fingers = []
         self._finger_num = 0
         self._fixing_fingers = False
+        self._is_started = False
 
         # MessageContainer
         self._message_container = MessageContainer()
@@ -81,7 +82,7 @@ class TableNode:
         self.nickname = nickname
         self._id = int(sha1(nickname.encode()).hexdigest(), 16) % (2 ** self._m)
 
-        self.successor = self._id
+        self.successors[0] = self._id
         self.predecessor = None
         self._fingers = [self._id] * self._m
 
@@ -95,30 +96,32 @@ class TableNode:
         key = os.urandom(32).hex()
 
         self._fingers = [self._id] * self._m
-        self._successor_query[key] = -1
+        self._successor_query[key] = -100
+        print("privetuli")
         self.send(node_id, str(self._id) + " " + str(self._id) + " " +
                   key + " " + invite, CommandCodes.FIND_SUCCESSOR)
 
     def find_successor(self, x: int, sender: int, key: str, invite: str):
         self._mutex.acquire()
         # self.log(f"{x}, {sender}, {self._id}, {self.successor}")
-        if TableNode.in_range(x, self._id, self.successor):
+        if TableNode.in_range(x, self._id, self.successors[0]):
             node_id = self._id
-            successor_id = self.successor
+            successor_id = self.successors[0]
+            print("A: ", successor_id)
             self._mutex.release()
 
             if node_id == successor_id:
                 self.establish_connection(invite)
             else:
                 self.send(successor_id, invite, CommandCodes.ESTABLISH_WITH)
-            self.send(sender, f"{self.successor} {key}", CommandCodes.RETURN_SUCCESSOR)
+            self.send(sender, f"{self.successors[0]} {key}", CommandCodes.RETURN_SUCCESSOR)
         else:
             n = self._closest_preceding(x)
             if n == self._id:
                 self._mutex.release()
                 self.establish_connection(invite)
-                self.send(self.successor, invite, CommandCodes.ESTABLISH_WITH)
-                self.send(sender, f"{self.successor} {key}", CommandCodes.RETURN_SUCCESSOR)
+                self.send(self.successors[0], invite, CommandCodes.ESTABLISH_WITH)
+                self.send(sender, f"{self.successors[0]} {key}", CommandCodes.RETURN_SUCCESSOR)
             else:
                 if key not in self._successor_query.keys():
                     self._successor_query[key] = sender
@@ -137,18 +140,39 @@ class TableNode:
         if sender > 0:
             self._mutex.release()
             self.send(sender, str(successor) + " " + key, CommandCodes.RETURN_SUCCESSOR)
-        elif sender == -1:
-            self.successor = successor
-            self._start_threads()
+        elif -100 <= sender <= -104:
+            print("GG", sender)
+            self.successors[sender + 100] = successor
+            if self._is_started:
+                self._is_started = True
+                self._start_threads()
             print("Successor received")
             self._mutex.release()
-        elif sender == -2:
+            if sender != -104:
+                self.update_successors()
+        elif sender == -200:
             self._fingers[self._finger_num] = successor
             self._finger_num = (self._finger_num + 1) % self._m
             self._mutex.release()
-        elif sender == -3:
+        elif sender == -300:
             self._mutex.release()
             self.send(successor, f"{self._id} {self._key_to_chat.pop(key)}", CommandCodes.CHAT_REQUEST)
+
+    def update_successors(self):
+        self._mutex.acquire()
+        if self.successors[0] is None:
+            self.successors = [self._id] * len(self.successors)
+            return
+        for i in range(1, len(self.successors)):
+            if self.successors[i] is not None:
+                continue
+            key = os.urandom(32).hex()
+
+            self._successor_query[key] = -100 - i
+            self._mutex.release()
+            self.send(self.successors[0], f"{self.successors[i - 1]} {self._id} {key} {self._invite}",
+                      CommandCodes.FIND_SUCCESSOR)
+            break
 
     def notify(self, node_id):
         self._mutex.acquire()
@@ -156,12 +180,12 @@ class TableNode:
             self.predecessor = node_id
         self._mutex.release()
 
-    @execute_periodically(1)
+    @execute_periodically(5)
     def stabilize(self):
         self._mutex.acquire()
-        if self.successor == self._id:
+        if self.successors[0] == self._id:
             if self.predecessor:
-                self.successor = self.predecessor
+                self.successors[0] = self.predecessor
             self._mutex.release()
         else:
             self._mutex.release()
@@ -170,24 +194,21 @@ class TableNode:
             else:
                 invite = self.generate_invite()
 
-            if self.successor not in self._ids:
-                # TODO: fix node delete
-                return
-            self.send(self.successor, f"{self._id} {invite}", CommandCodes.PREDECESSOR_REQUEST)
+            self.send(self.successors[0], f"{self._id} {invite}", CommandCodes.PREDECESSOR_REQUEST)
 
     def continue_stabilizing(self, s_predecessor):
         if s_predecessor != self._id and \
-                s_predecessor and (self.in_range(s_predecessor, self._id, self.successor)
-                                   or self.predecessor == self.successor):
+                s_predecessor and (self.in_range(s_predecessor, self._id, self.successors[0])
+                                   or self.predecessor == self.successors[0]):
             self._mutex.acquire()
-            self.successor = s_predecessor
+            self.successors[0] = s_predecessor
             self._mutex.release()
-        self.send(self.successor, str(self._id), CommandCodes.NOTIFY)
+        self.send(self.successors[0], str(self._id), CommandCodes.NOTIFY)
 
-    @execute_periodically(1)
+    @execute_periodically(5)
     def fix_fingers(self):
         self._mutex.acquire()
-        if self.successor != self._id:
+        if self.successors != self._id:
             self._fixing_fingers = True
             self._mutex.release()
             if self._invite:
@@ -196,30 +217,27 @@ class TableNode:
                 invite = self.generate_invite()
             key = os.urandom(32).hex()
 
-            if self.successor not in self._ids:
-                # TODO: delete node
-                pass
-            self._successor_query[key] = -2
+            self._successor_query[key] = -200
             finger = int(self._id + 2 ** (self._finger_num - 1))
-            self.send(self.successor, f"{finger} {self._id} {key} {invite}",
+            self.send(self.successors[0], f"{finger} {self._id} {key} {invite}",
                       CommandCodes.FIND_SUCCESSOR)
         if self._mutex.locked():
             self._mutex.release()
 
     def pass_message(self, x: int, message: str):
         self._mutex.acquire()
-        if TableNode.in_range(x, self._id, self.successor):
-            successor_id = self.successor
+        if TableNode.in_range(x, self._id, self.successors[0]):
+            successor_id = self.successors[0]
             self._mutex.release()
             self.send(successor_id, f"{x} {message}", CommandCodes.STORE_MESSAGE)
         else:
             n = self._closest_preceding(x)
             if n == self._id:
                 self._mutex.release()
-                self.send(self.successor, f"{x} {message}", CommandCodes.STORE_MESSAGE)
+                self.send(self.successors[0], f"{x} {message}", CommandCodes.STORE_MESSAGE)
             else:
                 self._mutex.release()
-                self.send(self.successor, f"{x} {message}", CommandCodes.PASS_MESSAGE)
+                self.send(self.successors[0], f"{x} {message}", CommandCodes.PASS_MESSAGE)
 
     def store_message(self, x: int, message: str):
         self._message_container.add_message(x, message)
@@ -232,11 +250,11 @@ class TableNode:
         x = int(sha1(x).hexdigest(), 16) % (2 ** self._m)
         key = os.urandom(32).hex()
 
-        self._successor_query[key] = -3
+        self._successor_query[key] = -300
         self._key_to_chat[key] = x
         if self._invite is None:
             self._invite = self.generate_invite()
-        self.send(self.successor, f"{x} {self._id} {key} {self._invite}", CommandCodes.FIND_SUCCESSOR)
+        self.send(self.successors[0], f"{x} {self._id} {key} {self._invite}", CommandCodes.FIND_SUCCESSOR)
 
     def chat_request(self, node_id: int, key: int):
         self.send(node_id, f"{key} {pickle.dumps(self._message_container.get_messages(key)).hex()}",
@@ -334,6 +352,7 @@ class TableNode:
 
     def send_chat_message(self, key: bytes, message: bytes):
         key = int(sha1(key).hexdigest(), 16) % (2 ** self._m)
+        print("CHAT MESSAGE:")
         self.send(self._id, f"{key} {message.hex()}", CommandCodes.PASS_MESSAGE)
 
     def send(self, sid: int, message: str, code: CommandCodes = CommandCodes.TEXT_MESSAGE):
@@ -451,7 +470,25 @@ class TableNode:
         del self._peers[sid]
         self._threads.pop(index)
         del self._ciphers[sid]
+        if self.predecessor not in self._ids:
+            self.predecessor = None
+
+        is_needed_to_fix = False
+        for i in self.successors:
+            if i not in self._ids:
+                is_needed_to_fix = True
+                break
+        if is_needed_to_fix:
+            correct_id = None
+            for i in self.successors:
+                if i in self._ids:
+                    correct_id = i
+                    break
+            self.successors = [None] * len(self.successors)
+            self.successors[0] = correct_id
         self._mutex.release()
+
+        self.update_successors()
 
     def log(self, msg):
         with open("./log.txt", "a") as log_file:
@@ -459,7 +496,7 @@ class TableNode:
 
     def print_info(self):
         print("Id: ", self._id)
-        print("Successor: ", self.successor)
+        print("Successor: ", self.successors)
         print("Predecessor", self.predecessor)
         print("Connections", self._peers.keys())
 
