@@ -1,9 +1,9 @@
 import os
 import pickle
+import threading
 
 from chord.table_node import TableNode
-from message.message import MessageSerializer
-from message.split import Split
+from chord.decorators import execute_periodically
 from security.chat_cipher import ChatCipher
 from message_codes import MessageCodes
 
@@ -16,6 +16,8 @@ class Client:
         print("Started client")
 
         self.client_node = TableNode()
+        thread = threading.Thread(target=self._reload_all)
+        thread.start()
 
     def input_cycle(self):
         while True:
@@ -53,19 +55,16 @@ class Client:
                 print(self.generate_token())
             elif ls[0] == "enterchat":
                 self.parse_token(ls[1])
-            elif ls[0] == "picture":
-                parser = MessageSerializer()
-                mess = parser.serialize_message(ls[1], 'picture')
-                self.client_node.send_all([mess])
-            elif ls[0] == "video":
-                parser = MessageSerializer()
-                mess = parser.serialize_message(ls[1], 'video')
-                self.client_node.send_all([mess])
+            elif ls[0] == "reload_chat":
+                self.client_node.reload_chat(self._chat_data[int(ls[1])][1])
+            elif ls[0] == "chat":
+                print(f"CHAT {ls[1]}:")
+                messages = self.client_node.get_chat(self._chat_data[int(ls[1])][1])
+                for i in range(len(messages)):
+                    print(self.parse_message(int(ls[1]), bytes.fromhex(messages[i][1])))
             else:
                 chat_id = int(ls[0])
-                # parser = MessageSerializer()
-                # mess = parser.serialize_message(q, 'text')
-                message = self.create_message(chat_id, (MessageCodes.TEXT, q))
+                message = self.create_message(chat_id, (MessageCodes.TEXT, q.split(" ", 1)[1]))
                 self.client_node.send_chat_message(self._chat_data[chat_id][1], message)
 
     def generate_token(self):
@@ -93,5 +92,10 @@ class Client:
     def parse_message(self, chat_id: int, data: bytes):
         message_list = pickle.loads(data)
         for i in range(len(message_list)):
-            message_list[i] = self._ciphers[chat_id].decrypt_message(pickle.loads(message_list[i]))
+            message_list[i] = pickle.loads(self._ciphers[chat_id].decrypt_message(message_list[i]))
         return message_list
+
+    @execute_periodically(5)
+    def _reload_all(self):
+        for token in self._chat_data:
+            self.client_node.reload_chat(token[1])

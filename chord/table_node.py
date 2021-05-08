@@ -1,4 +1,5 @@
 import os
+import pickle
 import socket
 import sys
 import threading
@@ -13,6 +14,8 @@ from message.message import MessageSerializer
 from chord.command_handler import CommandHandler
 
 
+# TODO: sort methods to different classes
+
 class TableNode:
     # Temp id for sockets
     _m = 160
@@ -24,6 +27,7 @@ class TableNode:
     _threads = []
     _token_dict = {}
     _successor_query = {}
+    _key_to_chat = {}
 
     def __init__(self):
         print(os.getpid())
@@ -107,19 +111,19 @@ class TableNode:
                 self.establish_connection(invite)
             else:
                 self.send(successor_id, invite, CommandCodes.ESTABLISH_WITH)
-            self.send(sender, str(self.successor) + " " + key, CommandCodes.RETURN_SUCCESSOR)
+            self.send(sender, f"{self.successor} {key}", CommandCodes.RETURN_SUCCESSOR)
         else:
             n = self._closest_preceding(x)
             if n == self._id:
                 self._mutex.release()
                 self.establish_connection(invite)
                 self.send(self.successor, invite, CommandCodes.ESTABLISH_WITH)
-                self.send(sender, str(self.successor) + " " + key, CommandCodes.RETURN_SUCCESSOR)
+                self.send(sender, f"{self.successor} {key}", CommandCodes.RETURN_SUCCESSOR)
             else:
-                self._successor_query[key] = sender
+                if key not in self._successor_query.keys():
+                    self._successor_query[key] = sender
                 self._mutex.release()
-                self.send(n, str(x) + " " + str(self._id) + " " + key + " " + invite,
-                          CommandCodes.FIND_SUCCESSOR)
+                self.send(n, f"{x} {self._id} {key} {invite}", CommandCodes.FIND_SUCCESSOR)
 
     def _closest_preceding(self, x: int) -> int:
         for finger in reversed(self._fingers):
@@ -142,6 +146,9 @@ class TableNode:
             self._fingers[self._finger_num] = successor
             self._finger_num = (self._finger_num + 1) % self._m
             self._mutex.release()
+        elif sender == -3:
+            self._mutex.release()
+            self.send(successor, f"{self._id} {self._key_to_chat.pop(key)}", CommandCodes.CHAT_REQUEST)
 
     def notify(self, node_id):
         self._mutex.acquire()
@@ -163,6 +170,9 @@ class TableNode:
             else:
                 invite = self.generate_invite()
 
+            if self.successor not in self._ids:
+                # TODO: fix node delete
+                return
             self.send(self.successor, f"{self._id} {invite}", CommandCodes.PREDECESSOR_REQUEST)
 
     def continue_stabilizing(self, s_predecessor):
@@ -185,6 +195,10 @@ class TableNode:
             else:
                 invite = self.generate_invite()
             key = os.urandom(32).hex()
+
+            if self.successor not in self._ids:
+                # TODO: delete node
+                pass
             self._successor_query[key] = -2
             finger = int(self._id + 2 ** (self._finger_num - 1))
             self.send(self.successor, f"{finger} {self._id} {key} {invite}",
@@ -192,16 +206,14 @@ class TableNode:
         if self._mutex.locked():
             self._mutex.release()
 
-    def pass_message(self, x: int, message: bytes):
+    def pass_message(self, x: int, message: str):
         self._mutex.acquire()
         if TableNode.in_range(x, self._id, self.successor):
             successor_id = self.successor
-            print("Pass 1")
             self._mutex.release()
             self.send(successor_id, f"{x} {message}", CommandCodes.STORE_MESSAGE)
         else:
             n = self._closest_preceding(x)
-            print("Pass 2")
             if n == self._id:
                 self._mutex.release()
                 self.send(self.successor, f"{x} {message}", CommandCodes.STORE_MESSAGE)
@@ -209,8 +221,30 @@ class TableNode:
                 self._mutex.release()
                 self.send(self.successor, f"{x} {message}", CommandCodes.PASS_MESSAGE)
 
-    def store_message(self, x: int, message: bytes):
+    def store_message(self, x: int, message: str):
         self._message_container.add_message(x, message)
+
+    def get_chat(self, x: bytes):
+        x = int(sha1(x).hexdigest(), 16) % (2 ** self._m)
+        return self._message_container.get_messages(x)
+
+    def reload_chat(self, x: bytes):
+        x = int(sha1(x).hexdigest(), 16) % (2 ** self._m)
+        key = os.urandom(32).hex()
+
+        self._successor_query[key] = -3
+        self._key_to_chat[key] = x
+        if self._invite is None:
+            self._invite = self.generate_invite()
+        self.send(self.successor, f"{x} {self._id} {key} {self._invite}", CommandCodes.FIND_SUCCESSOR)
+
+    def chat_request(self, node_id: int, key: int):
+        self.send(node_id, f"{key} {pickle.dumps(self._message_container.get_messages(key)).hex()}",
+                  CommandCodes.CHAT_RESPONSE)
+
+    def chat_response(self, key: int, messages: bytes):
+        messages = pickle.loads(messages)
+        self._message_container.set_chat(key, messages)
 
     def _accept_connection(self):
         while True:
@@ -300,8 +334,7 @@ class TableNode:
 
     def send_chat_message(self, key: bytes, message: bytes):
         key = int(sha1(key).hexdigest(), 16) % (2 ** self._m)
-        print(f"CHAT MESSAGE: {key} {message}")
-        self.send(self._id, f"{key} {message}", CommandCodes.PASS_MESSAGE)
+        self.send(self._id, f"{key} {message.hex()}", CommandCodes.PASS_MESSAGE)
 
     def send(self, sid: int, message: str, code: CommandCodes = CommandCodes.TEXT_MESSAGE):
         self.send_bytes(sid, message.encode(), code)

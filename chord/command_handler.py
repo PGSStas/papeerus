@@ -43,12 +43,16 @@ class CommandHandler:
         self.node.pass_message(int(x), message)
 
     def _store_message(self, data):
-        print("Zhuzhuz", data[1].decode())
         x, message = data[1].decode().split(" ", 1)
         self.node.store_message(int(x), message)
 
-    def _request_message(self, data):
-        pass
+    def _chat_request(self, data):
+        node_id, key = data[1].decode().split(" ", 1)
+        self.node.chat_request(int(node_id), int(key))
+
+    def _chat_response(self, data):
+        key, messages = data[1].decode().split(" ", 1)
+        self.node.chat_response(int(key), bytes.fromhex(messages))
 
     def handle_commands(self, code, data):
         if code == CommandCodes.TEXT_MESSAGE:
@@ -80,3 +84,9 @@ class CommandHandler:
 
         elif code == CommandCodes.STORE_MESSAGE:
             self._store_message(data)
+
+        elif code == CommandCodes.CHAT_REQUEST:
+            self._chat_request(data)
+
+        elif code == CommandCodes.CHAT_RESPONSE:
+            self._chat_response(data)
