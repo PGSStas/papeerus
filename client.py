@@ -74,8 +74,7 @@ class Client:
                         break
                     if len(ls) > 1 and ls[0] == "attach":
                         path = q.split(" ", 1)[1]
-                        what_format = path.split(".")
-                        what_format = what_format[len(what_format) - 1]
+                        what_format = path.split(".")[-1]
                         data = open(file=path, mode="rb").read()
                         message = (MessageCodes.FILE, what_format, data)
                         list_message.append(message)
