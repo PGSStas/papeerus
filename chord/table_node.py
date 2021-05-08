@@ -22,7 +22,7 @@ class TableNode:
     _threads = []
     _token_dict = {}
 
-    def __init__(self):
+    def __init__(self, port = 0):
         print(os.getpid())
         # Personal data
         self._id = None
@@ -43,7 +43,7 @@ class TableNode:
         self.command_handler = CommandHandler(self)
         # Starting listener
         self._socket_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._socket_listener.bind(("localhost", 0))
+        self._socket_listener.bind(("localhost", port))
         self._socket_listener.listen()
         print(f"Listening on 127.0.0.1:{self._socket_listener.getsockname()[1]}")
         self._mutex = threading.Lock()
@@ -65,6 +65,17 @@ class TableNode:
     def create(self):
         self.predecessor = None
         nickname = input("Your nickname:\n")
+        self._nickname = nickname
+        self._id = int(sha1(nickname.encode()).hexdigest(), 16) % 2 ** self._m
+        self.successor = self._id
+        thread = threading.Thread(target=self.stabilize)
+        thread.start()
+        thread = threading.Thread(target=self.fix_fingers)
+        thread.start()
+
+    def create_by_name(self, name):
+        self.predecessor = None
+        nickname = name
         self._nickname = nickname
         self._id = int(sha1(nickname.encode()).hexdigest(), 16) % 2 ** self._m
         self.successor = self._id
