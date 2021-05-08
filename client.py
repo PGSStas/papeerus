@@ -64,8 +64,23 @@ class Client:
                     print(self.parse_message(int(ls[1]), bytes.fromhex(messages[i][1])))
             else:
                 chat_id = int(ls[0])
-                message = self.create_message(chat_id, (MessageCodes.TEXT, q.split(" ", 1)[1]))
-                self.client_node.send_chat_message(self._chat_data[chat_id][1], message)
+                list_message = []
+                while True:
+                    q = input()
+                    ls = q.split(' ')
+                    if q == "send":
+                        break
+                    if len(ls) > 1 and ls[0] == "attach":
+                        path = q.split(" ", 1)[1]
+                        what_format = path.split(".")
+                        what_format = what_format[len(what_format) - 1]
+                        data = open(file=path, mode="rb").read()
+                        message = (MessageCodes.FILE, what_format, data)
+                    else:
+                        message = (MessageCodes.TEXT, q)
+                    list_message.append(message)
+                self.client_node.send_chat_message(self._chat_data[chat_id][1],
+                                                   self.create_message(chat_id, *list_message))
 
     def generate_token(self):
         iv = os.urandom(16)
