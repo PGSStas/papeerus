@@ -18,12 +18,15 @@ def test_node():
     first = TableNode(21234)
     first.create_by_name("A")
     invite = first.generate_invite()
+    first.print_info()
     assert invite[len(invite)-1] == 'A'
     second = TableNode(21235)
+    second._nickname = "B"
+    second.print_info()
     second.establish_connection(invite)
     third = TableNode(21236)
-    third.establish_connection(invite)
-    print(42)
+    third._nickname = 'C'
+    #third.establish_connection(invite)
 
 
 
