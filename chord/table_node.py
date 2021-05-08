@@ -16,15 +16,15 @@ class TableNode:
     # Temp id for sockets
     _m = 160
     # List of sockets, ciphers and threads for receive
-    _ids = []
-    _peers = {}
-    _ciphers = {}
-    _threads = []
-    _token_dict = {}
 
     def __init__(self, port = 0):
         print(os.getpid())
         # Personal data
+        self._ids = []
+        self._peers = {}
+        self._ciphers = {}
+        self._threads = []
+        self._token_dict = {}
         self._id = None
         self._nickname = None
         self._invite = None
@@ -55,9 +55,6 @@ class TableNode:
         self.count = {}
 
     def inrange(self, c, a, b):
-        a = a % self._m
-        b = b % self._m
-        c = c % self._m
         if a < b:
             return a < c < b
         return a < c or c < b
@@ -125,7 +122,7 @@ class TableNode:
             self.predecessor = node_id
         self._mutex.release()
 
-    @execute_periodically(3)
+    @execute_periodically(0.2)
     def stabilize(self):
         self._mutex.acquire()
         if self.successor == self._id:
@@ -148,7 +145,7 @@ class TableNode:
             self._mutex.release()
         self.send(self.successor, str(self._id), CommandCodes.NOTIFY)
 
-    @execute_periodically(5)
+    @execute_periodically(0.4)
     def fix_fingers(self):
         self._mutex.acquire()
         if self.successor != self._id:
@@ -158,7 +155,7 @@ class TableNode:
                 invite = self._invite
             else:
                 invite = self.generate_invite()
-            self.send(self.successor, str(int(self._id + 2 ** (self.finger_num - 1))) + " " + invite,
+            self.send(self.successor, str(int(self._id + 2 ** (self.finger_num - 1)) % 2**self._m) + " " + invite,
                       CommandCodes.FIND_SUCCESSOR)
         if self._mutex.locked():
             self._mutex.release()

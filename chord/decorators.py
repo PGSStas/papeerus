@@ -1,7 +1,7 @@
 from time import sleep
 
 
-def execute_periodically(period: int):
+def execute_periodically(period: float):
     def decorator(func):
         def wrapper(*args, **kwargs):
             while True:
