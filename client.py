@@ -74,13 +74,13 @@ class Client:
                         break
                     if len(ls) > 1 and ls[0] == "attach":
                         path = q.split(" ", 1)[1]
-                        what_format = path.split(".")[-1]
-                        data = open(file=path, mode="rb").read()
-                        message = (MessageCodes.FILE, what_format, data)
-                        list_message.append(message)
+                        if os.path.exists(path):
+                            what_format = path.split(".")[-1]
+                            data = open(file=path, mode="rb").read()
+                            message = (MessageCodes.FILE, what_format, data)
+                            list_message.append(message)
                     else:
-                        text_message += q
-                        text_message += '\n'
+                        text_message += q + '\n'
                 if text_message != "":
                     list_message.append((MessageCodes.TEXT, text_message))
                 with self.chat_mutex:

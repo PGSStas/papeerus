@@ -14,4 +14,3 @@ class CommandCodes(Enum):
     STORE_MESSAGE = 10
     CHAT_REQUEST = 11
     CHAT_RESPONSE = 12
-    FILE_MESSAGE = 13
