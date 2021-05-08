@@ -381,8 +381,9 @@ class TableNode:
             true_msg = b""
             while leni != 0:
                 read_sz = min(leni, 4096)
-                true_msg += sock.recv(read_sz)
-                leni -= read_sz
+                buf = sock.recv(read_sz)
+                true_msg += buf
+                leni -= len(buf)
             data = cipher.deserialize(true_msg)
             code = data[2]
             self.log(str(data))
