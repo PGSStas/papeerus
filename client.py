@@ -16,6 +16,7 @@ class Client:
         print("Started client")
 
         self.client_node = TableNode()
+        self.chat_mutex = threading.Lock()
         thread = threading.Thread(target=self._reload_all)
         thread.start()
 
@@ -64,8 +65,27 @@ class Client:
                     print(self.parse_message(int(ls[1]), bytes.fromhex(messages[i][1])))
             else:
                 chat_id = int(ls[0])
-                message = self.create_message(chat_id, (MessageCodes.TEXT, q.split(" ", 1)[1]))
-                self.client_node.send_chat_message(self._chat_data[chat_id][1], message)
+                list_message = []
+                text_message = ""
+                while True:
+                    q = input()
+                    ls = q.split(' ')
+                    if q == "send":
+                        break
+                    if len(ls) > 1 and ls[0] == "attach":
+                        path = q.split(" ", 1)[1]
+                        if os.path.exists(path):
+                            what_format = path.split(".")[-1]
+                            data = open(file=path, mode="rb").read()
+                            message = (MessageCodes.FILE, what_format, data)
+                            list_message.append(message)
+                    else:
+                        text_message += q + '\n'
+                if text_message != "":
+                    list_message.append((MessageCodes.TEXT, text_message))
+                with self.chat_mutex:
+                    self.client_node.send_chat_message(self._chat_data[chat_id][1],
+                                                       self.create_message(chat_id, *list_message))
 
     def generate_token(self):
         iv = os.urandom(16)
@@ -97,5 +117,6 @@ class Client:
 
     @execute_periodically(5)
     def _reload_all(self):
-        for token in self._chat_data:
-            self.client_node.reload_chat(token[1])
+        with self.chat_mutex:
+            for token in self._chat_data:
+                self.client_node.reload_chat(token[1])
