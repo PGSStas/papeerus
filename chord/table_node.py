@@ -513,7 +513,7 @@ class TableNode:
                         break
                 self.successors = [None] * len(self.successors)
                 self.successors[0] = correct_id
-                print(self.successors)
+                print("Successor missing. Rebuilding list")
             self._finger_num = 0
             self._fingers = [None] * self._m
         self.update_successors()
