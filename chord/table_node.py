@@ -92,10 +92,7 @@ class TableNode:
         self._start_threads()
 
     def join(self, node_id: int):
-        if self._invite:
-            invite = self._invite
-        else:
-            invite = self.generate_invite()
+        invite = self.get_invite()
         key = os.urandom(32).hex()
 
         self._fingers = [None] * self._m
@@ -175,11 +172,7 @@ class TableNode:
                 if self.predecessor:
                     self.successors[0] = self.predecessor
         if not self._fixing_successors and self.successors[0] != self._id:
-            if self._invite:
-                invite = self._invite
-            else:
-                invite = self.generate_invite()
-
+            invite = self.get_invite()
             if self.successors[self._successor_num] is not None:
                 with self._mutex:
                     self._fixing_successors = True
@@ -198,28 +191,24 @@ class TableNode:
             if s_predecessor != send_id and s_predecessor is not None \
                     and (self.in_range(s_predecessor, send_id, self.successors[self._successor_num])
                          or self.predecessor == self.successors[0]):
-                print(f"Successor {self._successor_num} received")
+                print(f"Successor {self._successor_num} received: stabilized")
                 self.successors[self._successor_num] = s_predecessor
-        if self._successor_num == 0:
-            self.send(self.successors[0], str(self._id), CommandCodes.NOTIFY)
+        self.send(self.successors[self._successor_num], str(send_id), CommandCodes.NOTIFY)
         with self._mutex:
             self._successor_num = (self._successor_num + 1) % len(self.successors)
             self._fixing_successors = False
 
     @execute_periodically(0.5)
     def fix_fingers(self):
-        self._mutex.acquire()
-        if self.successors[0] != self._id and not self._fixing_fingers:
-            self._fixing_fingers = True
-            self._mutex.release()
-            if self._invite:
-                invite = self._invite
-            else:
-                invite = self.generate_invite()
-            key = os.urandom(32).hex()
-
-            self._successor_query[key] = -200
-            finger = int(self._id + 2 ** self._finger_num)
+        with self._mutex:
+            boolean = self.successors[0] != self._id and not self._fixing_fingers
+        if boolean:
+            with self._mutex:
+                self._fixing_fingers = True
+                key = os.urandom(32).hex()
+                self._successor_query[key] = -200
+                finger = int(self._id + 2 ** self._finger_num)
+            invite = self.get_invite()
             self.send(self.successors[0], f"{finger} {self._id} {key} {invite}",
                       CommandCodes.FIND_SUCCESSOR)
         if self._mutex.locked():
@@ -509,3 +498,10 @@ class TableNode:
     def get_connections(self):
         ans = self._peers.keys()
         return ans
+
+    def get_invite(self):
+        if self._invite:
+            invite = self._invite
+        else:
+            invite = self.generate_invite()
+        return invite
