@@ -16,12 +16,11 @@ class CommandHandler:
         self.node.return_successor(int(successor), key)
 
     def _predecessor_request(self, data):
-        self.node_id, invite = data[1].decode().split()
+        node_id, invite = data[1].decode().split()
         if self.node.predecessor:
-            self.node.send(self.node.predecessor, self.node_id + " " + invite,
-                           CommandCodes.PREDECESSOR_CALLBACK)
+            self.node.send(self.node.predecessor, f"{node_id} {invite}", CommandCodes.PREDECESSOR_CALLBACK)
         else:
-            self.node.send(int(self.node_id), "None", CommandCodes.PREDECESSOR_RESPONSE)
+            self.node.send(int(node_id), "None", CommandCodes.PREDECESSOR_RESPONSE)
 
     def _predecessor_callback(self, data):
         dst_id, invite = data[1].decode().split()
@@ -29,11 +28,11 @@ class CommandHandler:
         self.node.send(int(dst_id), str(self.node._id), CommandCodes.PREDECESSOR_RESPONSE)
 
     def _predecessor_response(self, data):
-        self.node_id = data[1].decode()
-        if self.node_id == 'None':
+        node_id = data[1].decode()
+        if node_id == 'None':
             self.node.continue_stabilizing(None)
         else:
-            self.node.continue_stabilizing(int(self.node_id))
+            self.node.continue_stabilizing(int(node_id))
 
     def _establish_with(self, data):
         self.node.establish_connection(data[1].decode())
