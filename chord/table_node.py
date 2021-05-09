@@ -41,10 +41,11 @@ class TableNode:
 
         # Chord
         self.predecessor = None
-        self.successors = [None] * 5
+        self.successors = [None] * 2
         self._command_handler = CommandHandler(self)
         self._fingers = []
         self._finger_num = 0
+        self._successor_num = 0
         self._fixing_fingers = False
         self._is_started = False
 
@@ -97,17 +98,15 @@ class TableNode:
 
         self._fingers = [self._id] * self._m
         self._successor_query[key] = -100
-        print("privetuli")
-        self.send(node_id, str(self._id) + " " + str(self._id) + " " +
-                  key + " " + invite, CommandCodes.FIND_SUCCESSOR)
+        self.send(node_id, f"{self._id} {self._id} {key} {invite}", CommandCodes.FIND_SUCCESSOR)
 
     def find_successor(self, x: int, sender: int, key: str, invite: str):
         self._mutex.acquire()
-        # self.log(f"{x}, {sender}, {self._id}, {self.successor}")
+        # print(f"{x}, {sender}, {self._id}, {self.successors}")
         if TableNode.in_range(x, self._id, self.successors[0]):
             node_id = self._id
             successor_id = self.successors[0]
-            print("A: ", successor_id)
+            # print("A: ", successor_id)
             self._mutex.release()
 
             if node_id == successor_id:
@@ -136,19 +135,20 @@ class TableNode:
 
     def return_successor(self, successor: int, key: str):
         self._mutex.acquire()
-        sender = self._successor_query.pop(key)
+        sender = 0
+        if key in self._successor_query.keys():
+            sender = self._successor_query.pop(key)
         if sender > 0:
             self._mutex.release()
             self.send(sender, str(successor) + " " + key, CommandCodes.RETURN_SUCCESSOR)
-        elif -100 <= sender <= -104:
-            print("GG", sender)
-            self.successors[sender + 100] = successor
-            if self._is_started:
+        elif -101 <= sender <= -100:
+            self.successors[- sender - 100] = successor
+            if not self._is_started:
                 self._is_started = True
                 self._start_threads()
-            print("Successor received")
+            print(f"Successor {- sender - 100} received")
             self._mutex.release()
-            if sender != -104:
+            if sender != -101:
                 self.update_successors()
         elif sender == -200:
             self._fingers[self._finger_num] = successor
@@ -161,6 +161,7 @@ class TableNode:
     def update_successors(self):
         self._mutex.acquire()
         if self.successors[0] is None:
+            self._mutex.release()
             self.successors = [self._id] * len(self.successors)
             return
         for i in range(1, len(self.successors)):
@@ -170,9 +171,15 @@ class TableNode:
 
             self._successor_query[key] = -100 - i
             self._mutex.release()
-            self.send(self.successors[0], f"{self.successors[i - 1]} {self._id} {key} {self._invite}",
-                      CommandCodes.FIND_SUCCESSOR)
+            if self.successors[i - 1] in self._ids:
+                self.send(self.successors[i - 1], f"{self.successors[i - 1]} {self._id} {key} {self._invite}",
+                          CommandCodes.FIND_SUCCESSOR)
+            else:
+                break
+            print(f"Update successor {-100 - i}")
             break
+        if self._mutex.locked():
+            self._mutex.release()
 
     def notify(self, node_id):
         self._mutex.acquire()
@@ -180,7 +187,7 @@ class TableNode:
             self.predecessor = node_id
         self._mutex.release()
 
-    @execute_periodically(5)
+    @execute_periodically(0.5)
     def stabilize(self):
         self._mutex.acquire()
         if self.successors[0] == self._id:
@@ -193,19 +200,30 @@ class TableNode:
                 invite = self._invite
             else:
                 invite = self.generate_invite()
-
-            self.send(self.successors[0], f"{self._id} {invite}", CommandCodes.PREDECESSOR_REQUEST)
+            if self.successors[self._successor_num] is not None:
+                self.send(self.successors[self._successor_num],
+                          f"{self._id} {invite}", CommandCodes.PREDECESSOR_REQUEST)
+            else:
+                self.update_successors()
 
     def continue_stabilizing(self, s_predecessor):
-        if s_predecessor != self._id and \
-                s_predecessor and (self.in_range(s_predecessor, self._id, self.successors[0])
+        if self._successor_num == 0:
+            send_id = self._id
+        else:
+            send_id = self.successors[self._successor_num - 1]
+
+        # print(f"Receive stab: {s_predecessor} {send_id} {self.successors[self._successor_num]}")
+        if s_predecessor != send_id and \
+                s_predecessor and (self.in_range(s_predecessor, send_id, self.successors[self._successor_num])
                                    or self.predecessor == self.successors[0]):
             self._mutex.acquire()
-            self.successors[0] = s_predecessor
+            self.successors[self._successor_num] = s_predecessor
             self._mutex.release()
-        self.send(self.successors[0], str(self._id), CommandCodes.NOTIFY)
+        if self._successor_num == 0:
+            self.send(self.successors[self._successor_num], str(self._id), CommandCodes.NOTIFY)
+        self._successor_num = (self._successor_num + 1) % len(self.successors)
 
-    @execute_periodically(5)
+    @execute_periodically(0.5)
     def fix_fingers(self):
         self._mutex.acquire()
         if self.successors != self._id:
@@ -364,13 +382,21 @@ class TableNode:
             return
 
         self._mutex.acquire()
+        if sid not in self._ids:
+            self._mutex.release()
+            print("Lost smtng. Rebuild")
+            return
+
         sock = self._peers[sid][0]
         cipher = self._ciphers[sid]
         self._mutex.release()
 
         data = cipher.serialize(bytes(message), code)
         arr = len(data).to_bytes(4, "little") + data
-        sock.send(arr)
+        try:
+            sock.sendall(arr)
+        except BrokenPipeError:
+            print(f"Data, that been sending to {sid} was lost")
 
     def send_all(self, message: list):
         for i in self.get_connections():
@@ -391,22 +417,29 @@ class TableNode:
 
     def _receive(self, sid: int, sock: socket.socket, cipher: ChatCipher):
         while True:
-            buf = sock.recv(4)
-            if buf == b"":
+            try:
+                buf = sock.recv(4)
+                if buf == b"":
+                    self._delete_user(sid)
+                    sys.exit(0)
+
+                leni = int.from_bytes(buf, "little")
+                true_msg = b""
+                while leni != 0:
+                    read_sz = min(leni, 4096)
+                    buf = sock.recv(read_sz)
+                    if buf == b"":
+                        self._delete_user(sid)
+                        sys.exit(0)
+                    true_msg += buf
+                    leni -= len(buf)
+                data = cipher.deserialize(true_msg)
+                code = data[2]
+                self.log(str(data))
+                self._command_handler.handle_commands(code, data)
+            except ConnectionResetError:
                 self._delete_user(sid)
                 sys.exit(0)
-
-            leni = int.from_bytes(buf, "little")
-            true_msg = b""
-            while leni != 0:
-                read_sz = min(leni, 4096)
-                buf = sock.recv(read_sz)
-                true_msg += buf
-                leni -= len(buf)
-            data = cipher.deserialize(true_msg)
-            code = data[2]
-            self.log(str(data))
-            self._command_handler.handle_commands(code, data)
 
     def generate_invite(self):
         invite = ""

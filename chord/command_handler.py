@@ -8,7 +8,6 @@ class CommandHandler:
         self.node = node
 
     def _find_successor(self, data):
-        print("LOL")
         node_id, sender, key, invite = data[1].decode().split()
         self.node.find_successor(int(node_id), int(sender), key, invite)
 
