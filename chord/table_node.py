@@ -30,6 +30,7 @@ class TableNode:
     _key_to_chat = {}
 
     REQUEST_TIMEOUT = 0.2
+    SUCCESSOR_COUNT = 3
 
     def __init__(self):
         print(os.getpid())
@@ -43,7 +44,7 @@ class TableNode:
 
         # Chord
         self.predecessor = None
-        self.successors = [None] * 3
+        self.successors = [None] * self.SUCCESSOR_COUNT
         self._command_handler = CommandHandler(self)
         self._fingers = []
         self._finger_num = 0
@@ -137,7 +138,7 @@ class TableNode:
             sender = 0
             if key in self._successor_query.keys():
                 sender = self._successor_query.pop(key)
-            if -102 <= sender <= -100:
+            if -99 - self.SUCCESSOR_COUNT <= sender <= -100:
                 self.successors[- sender - 100] = successor
                 self._fixing_successors = False, -1
                 if not self._is_started:
@@ -199,16 +200,20 @@ class TableNode:
                 send_id = self._id
             else:
                 send_id = self.successors[self._successor_num - 1]
-
+            is_stabilized = False
             if s_predecessor != send_id and s_predecessor is not None and \
                     self.successors[self._successor_num] is not None \
                     and (self.in_range(s_predecessor, send_id, self.successors[self._successor_num])
                          or self.predecessor == self.successors[0]):
                 print(f"Successor {self._successor_num} received: stabilized")
-                self.successors[self._successor_num] = s_predecessor
+                self.successors = self.successors[:self._successor_num] + [s_predecessor] + self.successors[
+                                                                                            self._successor_num + 1:]
+                is_stabilized = True
         self.send(self.successors[self._successor_num], str(send_id), CommandCodes.NOTIFY)
         with self._mutex:
             self._successor_num = (self._successor_num + 1) % len(self.successors)
+            if is_stabilized:
+                self._successor_num = 0
             self._fixing_successors = False, -1
 
     def fix_fingers(self):
@@ -349,7 +354,6 @@ class TableNode:
 
     def send_chat_message(self, key: bytes, message: bytes):
         key = int(sha1(key).hexdigest(), 16) % (2 ** self._m)
-        print("CHAT MESSAGE:")
         self.send(self._id, f"{key} {message.hex()}", CommandCodes.PASS_MESSAGE)
 
     def send(self, sid: int, message: str, code: CommandCodes = CommandCodes.TEXT_MESSAGE):

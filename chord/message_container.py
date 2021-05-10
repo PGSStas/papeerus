@@ -11,6 +11,7 @@ class MessageContainer:
     def __init__(self):
         self.mutex = threading.Lock()
         thread = Thread(target=self._delete_old_messages)
+        thread.start()
 
     def add_message(self, key: int, message: str):
         with self.mutex:
@@ -27,6 +28,16 @@ class MessageContainer:
     def set_chat(self, key: int, chat):
         with self.mutex:
             self._messages[key] = chat
+
+    def split_by(self, sid):
+        m1 = {}
+        m2 = {}
+        for key in self._messages.keys():
+            if key <= sid:
+                m1[key] = self._messages[key]
+            else:
+                m2[key] = self._messages[key]
+        return m1, m2
 
     @execute_periodically(3600)
     def _delete_old_messages(self):
