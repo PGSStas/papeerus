@@ -29,7 +29,7 @@ class TableNode:
     _successor_query = {}
     _key_to_chat = {}
 
-    REQUEST_TIMEOUT = 5
+    REQUEST_TIMEOUT = 0.2
 
     def __init__(self):
         print(os.getpid())
@@ -48,8 +48,8 @@ class TableNode:
         self._fingers = []
         self._finger_num = 0
         self._successor_num = 0
-        self._fixing_fingers = False, time.time()
-        self._fixing_successors = False, time.time()
+        self._fixing_fingers = False, -1
+        self._fixing_successors = False, -1
         self._is_started = False
 
         # MessageContainer
@@ -139,13 +139,13 @@ class TableNode:
                 sender = self._successor_query.pop(key)
             if -102 <= sender <= -100:
                 self.successors[- sender - 100] = successor
-                self._fixing_successors = False, time.time()
+                self._fixing_successors = False, -1
                 if not self._is_started:
                     self._is_started = True
                     self._start_threads()
                 print(f"Successor {- sender - 100} received")
             elif sender == -200:
-                self._fixing_fingers = (False, time.time())
+                self._fixing_fingers = False, -1
                 self._fingers[self._finger_num] = successor
                 self._finger_num = (self._finger_num + 1) % self._m
 
@@ -165,7 +165,7 @@ class TableNode:
             first_none = next(i for i, v in enumerate(self.successors) if v is None)
             key = os.urandom(32).hex()
             self._successor_query[key] = -first_none - 100
-            self._fixing_successors = True, time.time()
+            self._fixing_successors = True, self.successors[first_none - 1]
         if self._fixing_successors[0]:
             self.send(self.successors[first_none - 1],
                       f"{self.successors[first_none - 1]} {self._id} {key} {self._invite}",
@@ -187,7 +187,7 @@ class TableNode:
                 self.find_and_delete_missing()
             if self.successors[self._successor_num] is not None:
                 with self._mutex:
-                    self._fixing_successors = True, time.time()
+                    self._fixing_successors = True, self.successors[self._successor_num]
                 self.send(self.successors[self._successor_num],
                           f"{self._id} {invite}", CommandCodes.PREDECESSOR_REQUEST)
             else:
@@ -209,14 +209,14 @@ class TableNode:
         self.send(self.successors[self._successor_num], str(send_id), CommandCodes.NOTIFY)
         with self._mutex:
             self._successor_num = (self._successor_num + 1) % len(self.successors)
-            self._fixing_successors = False, time.time()
+            self._fixing_successors = False, -1
 
     def fix_fingers(self):
         with self._mutex:
             boolean = self.successors[0] != self._id and not self._fixing_fingers[0]
         if boolean:
             with self._mutex:
-                self._fixing_fingers = (True, time.time())
+                self._fixing_fingers = True, self.successors[0]
                 key = os.urandom(32).hex()
                 self._successor_query[key] = -200
                 finger = int(self._id + 2 ** self._finger_num) % (2 ** self._m)
@@ -362,7 +362,7 @@ class TableNode:
 
         with self._mutex:
             if sid not in self._ids:
-                self._fixing_successors = False, time.time()
+                self._fixing_successors = False, -1
                 print("Lost smtng", sid)
                 return
 
@@ -406,7 +406,7 @@ class TableNode:
                         sid = ids[i]
                         sock = self._peers[sid][0]
                         cipher = self._ciphers[sid]
-                    sock.settimeout(0.1)
+                    sock.settimeout(self.REQUEST_TIMEOUT)
                     buf = sock.recv(4)
                     if buf == b"":
                         sock.settimeout(0)
@@ -488,11 +488,12 @@ class TableNode:
         return iv, message_token
 
     def find_and_delete_missing(self):
-        if self._fixing_successors[0] and time.time() > self._fixing_successors[1] + self.REQUEST_TIMEOUT:
-            self._fixing_successors = False, time.time()
-            print("Successor timeout")
-        if self._fixing_successors[0] and time.time() > self._fixing_fingers[1] + self.REQUEST_TIMEOUT:
-            self._fixing_fingers = False, time.time()
+        if self._fixing_successors[0] and self._fixing_successors[1] not in self._ids \
+                and self._fixing_successors[1] == -1:
+            self._fixing_successors = False, -1
+            print("Successor timeout", self._fixing_successors[1], self._ids)
+        if self._fixing_fingers[0] and self._fixing_fingers[1] not in self._ids and self._fixing_fingers[1] != -1:
+            self._fixing_fingers = False, -1
             print("Finger timeout")
 
         if self.predecessor not in self._ids:
@@ -504,22 +505,23 @@ class TableNode:
                     and self.successors[i] not in self._ids and self.successors[i] != self._id:
                 is_needed_to_fix = True
                 self._successor_num = i
-                self._fixing_successors = False, time.time()
+                self._fixing_successors = False, -1
             if is_needed_to_fix:
                 self.successors[i] = None
         if is_needed_to_fix:
             print("Successor missing. Rebuilding list")
             print(self.successors, self._id, self._ids)
 
-        # is_needed_to_fix = False
-        # for i in range(len(self._fingers)):
-        #     if not is_needed_to_fix and self._fingers[i] not in self._ids and self._fingers[i] != self._id:
-        #         is_needed_to_fix = True
-        #         self._finger_num = i
-        #     if is_needed_to_fix:
-        #         self._fingers[i] = None
-        # if is_needed_to_fix:
-        #     print("Finger missing. Rebuilding list")
+        is_needed_to_fix = False
+        for i in range(len(self._fingers)):
+            if not is_needed_to_fix and self._fingers[i] is not None \
+                    and self._fingers[i] not in self._ids and self._fingers[i] != self._id:
+                is_needed_to_fix = True
+                self._finger_num = i
+            if is_needed_to_fix:
+                self._fingers[i] = None
+        if is_needed_to_fix:
+            print("Finger missing. Rebuilding list")
 
     def _delete_user(self, sid: int):
         with self._mutex:
