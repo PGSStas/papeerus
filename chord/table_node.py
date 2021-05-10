@@ -11,7 +11,6 @@ from security.chat_cipher import ChatCipher
 from hashlib import sha1
 from chord.command_codes import CommandCodes
 from chord.decorators import execute_periodically
-from message.message import MessageSerializer
 from chord.command_handler import CommandHandler
 
 
@@ -386,16 +385,7 @@ class TableNode:
                 self.send_bytes(i, j)
 
     def receive_message(self, data):
-        who = data[0]
-        what = data[1]
-        parser = MessageSerializer()
-        ans = parser.deserialize_message(what)
-        if ans[0] == "text":
-            print(who + ":", ans[1])
-        elif ans[0] == "video":
-            print(who + " sends you a video message")
-        elif ans[0] == "picture":
-            print(who + " sends you an image")
+        print(data)
 
     def _receive(self):
         while True:
