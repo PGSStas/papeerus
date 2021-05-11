@@ -1,6 +1,6 @@
 import os
 import pickle
-import threading
+import multiprocessing
 
 from chord.table_node import TableNode
 from chord.decorators import execute_periodically
@@ -16,28 +16,18 @@ class Client:
         print("Started client")
 
         self.client_node = TableNode()
-        self.chat_mutex = threading.Lock()
-        thread = threading.Thread(target=self._reload_all)
-        thread.start()
+        self.chat_mutex = multiprocessing.Lock()
+        self.process = multiprocessing.Process(target=self._reload_all)
+        self.process.start()
+
+    def create_network(self, nickname):
+        self.client_node.create(nickname)
+        return self.client_node.get_invite()
+
+    def register_network(self, token: str):
+        self.client_node.establish_connection(token)
 
     def input_cycle(self):
-        while True:
-            q = input("c - create own ring; r - join to the known ring\n")
-            if q == "c":
-                self.client_node.create()
-            elif q == "r":
-                q = input("Please, write your invite token:\n")
-                self.client_node.establish_connection(q)
-                # try:
-                #     self.client_node.establish_connection(q)
-                #     break
-                # except Exception:
-                #     pass
-                # TODO: exception for existing nickname
-            else:
-                continue
-            break
-
         while True:
             q = input()
             ls = q.split(' ')
@@ -116,6 +106,12 @@ class Client:
         for i in range(len(message_list)):
             message_list[i] = pickle.loads(self._ciphers[chat_id].decrypt_message(message_list[i]))
         return message_list
+
+    def __del__(self):
+        print("El")
+        self.process.terminate()
+        print("El2")
+        del self.client_node
 
     @execute_periodically(5)
     def _reload_all(self):

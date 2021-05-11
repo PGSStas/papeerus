@@ -1,11 +1,13 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 import sys
 
+from client import Client
 from ui_resourses import dialog_windows, message_widget
 
 
 class Ui_MainWindow(QtWidgets.QMainWindow):
     def __init__(self, main_window):
+        self.client = Client()
         QtWidgets.QMainWindow.__init__(self)
         self.init_view(main_window)
         self.add_actions()
@@ -220,7 +222,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
     def file(self):
         file = QtWidgets.QFileDialog(self.centralwidget).getOpenFileName()
-        print(file[0]) # filename
+        print(file[0])  # filename
         # TO DO: add behavior to adding files
 
     def message(self, name, text, time, img="ui_resourses/res/avatar.jpg"):
@@ -290,6 +292,10 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
     def close_loading_window(self):
         self.t.stop()
         self.loading_window.close()
+
+    def __del__(self):
+        print("Zopa")
+        del self.client
 
 
 if __name__ == "__main__":

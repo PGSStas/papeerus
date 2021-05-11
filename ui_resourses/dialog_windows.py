@@ -11,18 +11,18 @@ class TokenDialog(QtWidgets.QDialog):
         self.setStyleSheet(self.parent.styleData)
 
         self.setWindowTitle("Ring connection")
-        self.setFixedSize(600, 200)
+        self.setFixedSize(800, 200)
         self.v_layout = QtWidgets.QVBoxLayout(self)
         self.name_label = QtWidgets.QLabel("Enter your name:")
         self.v_layout.addWidget(self.name_label)
         self.name_edit = QtWidgets.QPlainTextEdit()
-        self.name_edit.setFixedSize(582, 30)
+        self.name_edit.setFixedSize(782, 30)
         self.v_layout.addWidget(self.name_edit)
         self.token_label = QtWidgets.QLabel("Enter the ring token or push \"Create\" button "
                                             "to create new ring:")
         self.v_layout.addWidget(self.token_label)
         self.token_edit = QtWidgets.QPlainTextEdit()
-        self.token_edit.setFixedSize(582, 30)
+        self.token_edit.setFixedSize(782, 30)
         self.v_layout.addWidget(self.token_edit)
         self.button_widget = QtWidgets.QWidget(self)
         self.h_layout = QtWidgets.QHBoxLayout(self.button_widget)
@@ -58,10 +58,9 @@ class TokenDialog(QtWidgets.QDialog):
     def create_ring(self):
         if not self.ring_is_created:
             self.name = self.name_edit.toPlainText()
-            # TO DO: connect behavior for creating a new ring
-            # token = ...
-            self.token = "default"
+            self.token = self.parent.client.create_network(self.name)
             self.token_label.setText("New ring was created. It's token:")
+            self.token_edit.setReadOnly(True)
             self.token_edit.setPlainText(self.token)
             self.create_button.setText("Done")
             self.accept_button.setEnabled(False)
