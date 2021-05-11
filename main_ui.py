@@ -44,14 +44,10 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.styleData = f.read()
         f.close()
 
-        #main_window.setObjectName("MainWindow")
-        #main_window.resize(800, 600)
-        #main_window.setStyleSheet(self.styleData)
         self.setObjectName("MainWindow")
         self.resize(800, 600)
         self.setStyleSheet(self.styleData)
         self.setWindowIcon(QtGui.QIcon("ui_resourses/res/image.png"))
-        #self.centralwidget = QtWidgets.QWidget(main_window)
         self.centralwidget = QtWidgets.QWidget(self)
         self.centralwidget.setStyleSheet("")
         self.centralwidget.setObjectName("centralwidget")
@@ -197,8 +193,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.gridLayout_2.setColumnStretch(0, 1)
         self.gridLayout_2.setColumnStretch(1, 5)
         self.setCentralWidget(self.centralwidget)
-        #self.retranslateUi(main_window)
-        #QtCore.QMetaObject.connectSlotsByName(main_window)
         self.retranslateUi(self)
         QtCore.QMetaObject.connectSlotsByName(self)
 
@@ -322,10 +316,10 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
     def close_loading_window(self):
         self.loading_window.close()
 
+
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     MainWindow = QtWidgets.QMainWindow()
     ui = Ui_MainWindow(MainWindow)
-    #MainWindow.show()
     ui.show()
     sys.exit(app.exec_())
