@@ -18,6 +18,7 @@ class Client:
         self.client_node = TableNode()
         self.chat_mutex = threading.Lock()
         self.process = threading.Thread(target=self._reload_all)
+        self.process.daemon = True
         self.process.start()
 
     def create_network(self, nickname):
@@ -46,39 +47,22 @@ class Client:
         messages = self.client_node.local_chats.get(chat_hash, [])
         ans = []
         for message in messages:
-            ans.append(self.parse_message(chat_id, bytes.fromhex(message[1])[32:]))
+            salt = bytes.fromhex(message[1])[32:]
+            deciphered_message = self.parse_message(chat_id, bytes.fromhex(message[1])[32:])
+            ans.append((message[0], salt, deciphered_message[0], deciphered_message[1]))
         return ans
 
-
-
-    def input_cycle(self):
-        while True:
-            q = input()
-            ls = q.split(' ')
-            # elif self._is_integer(ls[0]):
-            #     chat_id = int(ls[0])
-            #     list_message = []
-            #     text_message = ""
-            #     while True:
-            #         q = input()
-            #         ls = q.split(' ')
-            #         if q == "send":
-            #             break
-            #         if len(ls) > 1 and ls[0] == "attach":
-            #             path = q.split(" ", 1)[1]
-            #             if os.path.exists(path):
-            #                 what_format = path.split(".")[-1]
-            #                 data = open(file=path, mode="rb").read()
-            #                 message = (MessageCodes.FILE, what_format, data)
-            #                 list_message.append(message)
-            #         else:
-            #             text_message += q + '\n'
-            #     if text_message != "":
-            #         list_message.append((MessageCodes.TEXT, text_message))
-            #     print(list_message)
-            #     with self.chat_mutex:
-            #         list_message = self.create_message(chat_id, *list_message)
-            #         self.client_node.send_chat_message(self._chat_data[chat_id][1], os.urandom(32) + list_message)
+    def send_message(self, chat_id: int, message: str, files):
+        list_message = [(MessageCodes.TEXT, message)]
+        for path in files:
+            if os.path.exists(path):
+                what_format = path.split(".")[-1]
+                data = open(file=path, mode="rb").read()
+                message = (MessageCodes.FILE, what_format, data)
+                list_message.append(message)
+        with self.chat_mutex:
+            list_message = self.create_message(chat_id, self.client_node.nickname, *list_message)
+            self.client_node.send_chat_message(self._chat_data[chat_id][1], os.urandom(32) + list_message)
 
     def generate_token(self):
         iv = os.urandom(16)
@@ -96,23 +80,17 @@ class Client:
         self._chat_data.append((token, iv))
         self._ciphers.append(ChatCipher(token, iv, self.client_node.nickname))
 
-    def create_message(self, chat_id: int, *messages):
+    def create_message(self, chat_id: int, nickname: str, *messages):
         final_message = []
         for message in messages:
             final_message.append(self._ciphers[chat_id].encrypt_message(pickle.dumps(message)))
-        return pickle.dumps(final_message)
+        return pickle.dumps((nickname, final_message))
 
     def parse_message(self, chat_id: int, data: bytes):
-        message_list = pickle.loads(data)
+        nickname, message_list = pickle.loads(data)
         for i in range(len(message_list)):
             message_list[i] = pickle.loads(self._ciphers[chat_id].decrypt_message(message_list[i]))
-        return message_list
-
-    def __del__(self):
-        print("El")
-        del self.client_node
-        self.process.join()
-        print("El2")
+        return nickname, message_list
 
     @execute_periodically(5)
     def _reload_all(self):

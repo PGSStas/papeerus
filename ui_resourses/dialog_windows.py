@@ -145,8 +145,10 @@ class ChatAddingDialog(QtWidgets.QDialog):
             self.chat_token = self.parent.client.create_chat()
             self.token_label.setText("New chat was created. It's token:")
             self.token_edit.setPlainText(self.chat_token)
+            self.token_edit.setReadOnly(True)
             self.create_button.setText("Done")
             self.accept_button.setEnabled(False)
+            self.cancel_button.setEnabled(False)
             self.ring_is_created = True
 
         else:
@@ -160,6 +162,7 @@ class ChatAddingDialog(QtWidgets.QDialog):
             self.done(QDialog.Accepted)
 
     def cancel(self):
+
         self.reject()
 
 

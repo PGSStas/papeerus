@@ -10,6 +10,7 @@ class MessageContainer:
     def __init__(self):
         self.mutex = threading.Lock()
         self.thread = threading.Thread(target=self._delete_old_messages)
+        self.thread.daemon = True
         self.thread.start()
 
     def add_message(self, key: int, message: str):

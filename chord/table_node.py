@@ -64,8 +64,10 @@ class TableNode:
         self._mutex = threading.Lock()
 
         self._accept_thread = threading.Thread(target=self._accept_connection)
+        self._accept_thread.daemon = True
         self._accept_thread.start()
         self._receive_thread = threading.Thread(target=self._receive)
+        self._receive_thread.daemon = True
         self._receive_thread.start()
         self._balance_thread = None
 
@@ -77,6 +79,7 @@ class TableNode:
 
     def _start_threads(self):
         self._balance_thread = threading.Thread(target=self.fix_dht_structure)
+        self._balance_thread.daemon = True
         self._balance_thread.start()
 
     def create(self, nickname: str):
@@ -299,6 +302,7 @@ class TableNode:
             sid = self.bytes_to_hash(nickname)
 
             with self._mutex:
+                print("TUP")
                 self._ids.append(sid)
                 self._ciphers[sid] = ChatCipher(self._token_dict[key][0], self._token_dict[key][1], self.nickname)
                 self._peers[sid] = connection
@@ -335,12 +339,13 @@ class TableNode:
             if self.nickname is None:
                 is_reg = True
                 socket_client.send("REG".encode())
-                socket_client.send(str(nickname).encode())
+                print("GG")
+                socket_client.send(str(our_nickname).encode())
                 return_code = socket_client.recv(9).decode()
                 if return_code != "CODE: 100":
                     return False, None
-                self.nickname = nickname
-                self._id = self.bytes_to_hash(nickname.encode())
+                self.nickname = our_nickname
+                self._id = self.bytes_to_hash(our_nickname.encode())
             else:
                 socket_client.send("CON".encode())
                 socket_client.send(str(self.nickname).encode())
@@ -562,11 +567,3 @@ class TableNode:
     @staticmethod
     def bytes_to_hash(x: bytes):
         return int(sha1(x).hexdigest(), 16) % (2 ** 160)
-
-    def __del__(self):
-        print("Pisun")
-        del self._message_container
-        if self._balance_thread is not None:
-            self._balance_thread.join()
-        self._accept_thread.join()
-        self._receive_thread.join()
