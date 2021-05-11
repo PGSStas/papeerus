@@ -27,57 +27,58 @@ class Client:
     def register_network(self, token: str, nickname: str):
         return self.client_node.establish_connection(token, nickname)
 
+    def create_chat(self):
+        return self.generate_token()
+
+    def enter_chat(self, token: str):
+        self.parse_token(token)
+
+    def _reload_chat(self, chat_id: int):
+        if chat_id < 0 or chat_id >= len(self._chat_data):
+            return False
+        self.client_node.reload_chat(self._chat_data[chat_id][1])
+        return True
+
+    def get_chat_data(self, chat_id: int):
+        if not self._reload_chat(chat_id):
+            return None
+        chat_hash = self.client_node.bytes_to_hash(self._chat_data[chat_id][1])
+        messages = self.client_node.local_chats.get(chat_hash, [])
+        ans = []
+        for message in messages:
+            ans.append(self.parse_message(chat_id, bytes.fromhex(message[1])[32:]))
+        return ans
+
+
+
     def input_cycle(self):
         while True:
             q = input()
             ls = q.split(' ')
-            if ls[0] == "quit":
-                # Exit from program
-                os._exit(0)
-            elif ls[0] == "invite":
-                print(self.client_node.generate_invite())
-            elif ls[0] == "info":
-                self.client_node.print_info()
-                print("Messages:", self.client_node._message_container._messages)
-                print("Chats:", self._chat_data)
-            elif ls[0] == "chats":
-                print(self._chat_data)
-            elif ls[0] == "newchat":
-                print(self.generate_token())
-            elif ls[0] == "enterchat":
-                self.parse_token(ls[1])
-            elif ls[0] == "reload_chat":
-                self.client_node.reload_chat(self._chat_data[int(ls[1])][1])
-            elif len(ls) == 2 and ls[0] == "chat" and self._is_integer(ls[1]):
-                print(f"CHAT {ls[1]}:")
-                chat_id = self.client_node.bytes_to_hash(self._chat_data[int(ls[1])][1])
-                messages = self.client_node.local_chats.get(chat_id, [])
-                for message in messages:
-                    print(self.parse_message(int(ls[1]), bytes.fromhex(message[1])[32:]))
-            elif self._is_integer(ls[0]):
-                chat_id = int(ls[0])
-                list_message = []
-                text_message = ""
-                while True:
-                    q = input()
-                    ls = q.split(' ')
-                    if q == "send":
-                        break
-                    if len(ls) > 1 and ls[0] == "attach":
-                        path = q.split(" ", 1)[1]
-                        if os.path.exists(path):
-                            what_format = path.split(".")[-1]
-                            data = open(file=path, mode="rb").read()
-                            message = (MessageCodes.FILE, what_format, data)
-                            list_message.append(message)
-                    else:
-                        text_message += q + '\n'
-                if text_message != "":
-                    list_message.append((MessageCodes.TEXT, text_message))
-                print(list_message)
-                with self.chat_mutex:
-                    list_message = self.create_message(chat_id, *list_message)
-                    self.client_node.send_chat_message(self._chat_data[chat_id][1], os.urandom(32) + list_message)
+            # elif self._is_integer(ls[0]):
+            #     chat_id = int(ls[0])
+            #     list_message = []
+            #     text_message = ""
+            #     while True:
+            #         q = input()
+            #         ls = q.split(' ')
+            #         if q == "send":
+            #             break
+            #         if len(ls) > 1 and ls[0] == "attach":
+            #             path = q.split(" ", 1)[1]
+            #             if os.path.exists(path):
+            #                 what_format = path.split(".")[-1]
+            #                 data = open(file=path, mode="rb").read()
+            #                 message = (MessageCodes.FILE, what_format, data)
+            #                 list_message.append(message)
+            #         else:
+            #             text_message += q + '\n'
+            #     if text_message != "":
+            #         list_message.append((MessageCodes.TEXT, text_message))
+            #     print(list_message)
+            #     with self.chat_mutex:
+            #         list_message = self.create_message(chat_id, *list_message)
+            #         self.client_node.send_chat_message(self._chat_data[chat_id][1], os.urandom(32) + list_message)
 
     def generate_token(self):
         iv = os.urandom(16)

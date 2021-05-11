@@ -89,18 +89,18 @@ class ChatAddingDialog(QtWidgets.QDialog):
         self.setStyleSheet(self.parent.styleData)
 
         self.setWindowTitle("Chat adding")
-        self.setFixedSize(600, 200)
+        self.setFixedSize(800, 200)
         self.v_layout = QtWidgets.QVBoxLayout(self)
         self.name_label = QtWidgets.QLabel("Enter chat name:")
         self.v_layout.addWidget(self.name_label)
         self.name_edit = QtWidgets.QPlainTextEdit()
-        self.name_edit.setFixedSize(582, 30)
+        self.name_edit.setFixedSize(782, 30)
         self.v_layout.addWidget(self.name_edit)
         self.token_label = QtWidgets.QLabel("Enter the chat token or push \"Create\" button "
                                             "to create new chat:")
         self.v_layout.addWidget(self.token_label)
         self.token_edit = QtWidgets.QPlainTextEdit()
-        self.token_edit.setFixedSize(582, 30)
+        self.token_edit.setFixedSize(782, 30)
         self.v_layout.addWidget(self.token_edit)
         self.button_widget = QtWidgets.QWidget(self)
         self.h_layout = QtWidgets.QHBoxLayout(self.button_widget)
@@ -126,10 +126,13 @@ class ChatAddingDialog(QtWidgets.QDialog):
         if self.name_edit.toPlainText() == "" or self.token_edit.toPlainText() == "":
             QtWidgets.QMessageBox.warning(self, "Error", "You should fill the fields")
             return
+        if self.name_edit.toPlainText() in self.parent.chats.keys():
+            QtWidgets.QMessageBox.warning(self, "Error", "This chat is already exists")
+            return
 
         self.chat_name = self.name_edit.toPlainText()
         self.chat_token = self.token_edit.toPlainText()
-        # TO DO: connect behavior for connecting the existing chat
+        self.parent.client.enter_chat(self.chat_token)
         self.parent.chat_list.addItem(self.chat_name)
         self.parent.chats[self.chat_name] = []
         self.parent.tokens[self.chat_name] = self.chat_token
@@ -139,8 +142,7 @@ class ChatAddingDialog(QtWidgets.QDialog):
         if not self.ring_is_created:
             self.chat_name = self.name_edit.toPlainText()
             # TO DO: connect behavior for creating a new chat
-            # token = ...
-            self.chat_token = "default"
+            self.chat_token = self.parent.client.create_chat()
             self.token_label.setText("New chat was created. It's token:")
             self.token_edit.setPlainText(self.chat_token)
             self.create_button.setText("Done")
