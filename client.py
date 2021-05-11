@@ -84,8 +84,10 @@ class Client:
                         if not os.path.exists(dir):
                             os.makedirs(dir)
                         path = dir + '/' + str(hashlib.sha1(data).hexdigest()) + "." + what_format
+                        print(data)
                         file = open(file=path, mode="wb")
                         file.write(data)
+                        file.close()
                         print(path)
                         self._path_map[hsh] = path
             elif self._is_integer(ls[0]):
@@ -101,7 +103,8 @@ class Client:
                         path = q.split(" ", 1)[1]
                         if os.path.exists(path):
                             what_format = path.split(".")[-1]
-                            data = open(file=path, mode="rb").read()
+                            with open(file=path,mode="rb") as file:
+                                data = file.read()
                             message = (MessageCodes.FILE, what_format, data)
                             list_message.append(message)
                     else:
@@ -146,6 +149,7 @@ class Client:
         if os.path.exists(path):
             jfile = open(file=path, mode="r")
             data_hex = json.load(jfile)
+            jfile.close()
             data_bytes = []
             for i, j in data_hex:
                 data_bytes.append((bytes.fromhex(i), bytes.fromhex(j)))
@@ -161,6 +165,7 @@ class Client:
         jstr = json.dumps(data_hex)
         file = open(file=self.client_node.nickname + "_keys.json", mode="w")
         file.write(jstr)
+        file.close()
 
     @execute_periodically(5)
     def _reload_all(self):
