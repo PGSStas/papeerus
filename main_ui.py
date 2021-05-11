@@ -248,7 +248,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.messages_area_layout.setWidget(self.message_counter,
                                             QtWidgets.QFormLayout.FieldRole, message)
         self.message_counter += 1
-        self.send_message_field.setPlainText("")
         self.send_message_field.setFocus()
 
     def send_message(self):
@@ -260,6 +259,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
             return
         self.client.send_message(item, text, self.current_chat_files)
         self.current_chat_files = []
+        self.send_message_field.setPlainText("")
 
     def scroll_to_end(self, _min: int, _max: int):
         position = self.messages_area.verticalScrollBar().sliderPosition()
@@ -280,11 +280,11 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         for message in chat:
             chat_text = ""
             for blocks in message[3]:
-                if blocks[0] == MessageCodes.TEXT:
-                    chat_text += blocks[1] + "\n\n"
+                if blocks[0] == MessageCodes.TEXT and blocks[1] != "":
+                    chat_text += blocks[1] + "\n"
                 elif blocks[0] == MessageCodes.FILE:
                     chat_text += f"Received {blocks[1]} file\n"
-            self.message(message[2], chat_text, str(datetime.datetime.fromtimestamp(message[0]).strftime('%c')))
+            self.message(message[2][:-1], chat_text, str(datetime.datetime.fromtimestamp(message[0]).strftime('%c')))
 
     def chat_changed(self):
         item = self.chat_list.currentItem()
