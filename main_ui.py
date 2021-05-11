@@ -1,4 +1,6 @@
 import datetime
+import hashlib
+import os
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 import sys
@@ -37,7 +39,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.refresh_all)
-        self.timer.start(1000)
+        self.timer.start(5000)
 
     def init_view(self, main_window):
         f = open('ui_resourses/res/super.stylesheet', 'r')
@@ -277,8 +279,14 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
                 if blocks[0] == MessageCodes.TEXT and blocks[1] != "":
                     chat_text += blocks[1] + "\n"
                 elif blocks[0] == MessageCodes.FILE:
-                    chat_text += f"Received {blocks[1]} file\n"
-            self.message(message[2][:-1], chat_text, str(datetime.datetime.fromtimestamp(message[0]).strftime('%c')))
+                    directory = str(hashlib.sha1(self.client.client_node.nickname.encode()).hexdigest()) + "_media"
+                    if not os.path.exists(directory):
+                        os.makedirs(directory)
+                    path = directory + '/' + str(hashlib.sha1(blocks[2]).hexdigest()) + "." + blocks[1]
+                    with open(file=path, mode="wb") as file:
+                        file.write(blocks[2])
+                    chat_text += f"Received {path}\n"
+            self.message(message[2], chat_text[:-1], str(datetime.datetime.fromtimestamp(message[0]).strftime('%c')))
 
     def chat_changed(self):
         item = self.chat_list.currentItem()

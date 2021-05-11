@@ -1,6 +1,9 @@
 import os
 import pickle
+import random
 import threading
+import json
+import hashlib
 
 from chord.table_node import TableNode
 from chord.decorators import execute_periodically
@@ -11,12 +14,14 @@ from message_codes import MessageCodes
 class Client:
     _chat_data = []
     _ciphers = []
+    _path_map = {}
 
     def __init__(self):
         print("Started client")
 
         self.client_node = TableNode()
         self.chat_mutex = threading.Lock()
+
         self.process = threading.Thread(target=self._reload_all)
         self.process.daemon = True
         self.process.start()
@@ -29,9 +34,11 @@ class Client:
         return self.client_node.establish_connection(token, nickname)
 
     def create_chat(self):
+        self.save_chats()
         return self.generate_token()
 
     def enter_chat(self, token: str):
+        self.save_chats()
         self.parse_token(token)
 
     def _reload_chat(self, chat_id: int):
@@ -91,6 +98,29 @@ class Client:
         for i in range(len(message_list)):
             message_list[i] = pickle.loads(self._ciphers[chat_id].decrypt_message(message_list[i]))
         return nickname, message_list
+
+    def load_chats(self):
+        path = file = self.client_node.nickname + "_keys.json"
+        if os.path.exists(path):
+            jfile = open(file=path, mode="r")
+            data_hex = json.load(jfile)
+            jfile.close()
+            data_bytes = []
+            for i, j in data_hex:
+                data_bytes.append((bytes.fromhex(i), bytes.fromhex(j)))
+            self._chat_data = data_bytes
+            self._ciphers = []
+            for token, iv in self._chat_data:
+                self._ciphers.append(ChatCipher(token, iv, self.client_node.nickname))
+
+    def save_chats(self):
+        data_hex = []
+        for i, j in self._chat_data:
+            data_hex.append((bytes.hex(i), bytes.hex(j)))
+        jstr = json.dumps(data_hex)
+        file = open(file=self.client_node.nickname + "_keys.json", mode="w")
+        file.write(jstr)
+        file.close()
 
     @execute_periodically(5)
     def _reload_all(self):
