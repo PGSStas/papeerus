@@ -224,8 +224,6 @@ class TableNode:
             invite = self.get_invite()
             self.send(self.successors[0], f"{finger} {self._id} {key} {invite}",
                       CommandCodes.FIND_SUCCESSOR)
-        if self._mutex.locked():
-            self._mutex.release()
 
     def distribute_chats(self):
         if self.predecessor is not None:
@@ -568,5 +566,8 @@ class TableNode:
         del self._message_container
         if self._balance_thread is not None:
             self._balance_thread.terminate()
+            self._balance_thread.join()
         self._accept_thread.terminate()
+        self._accept_thread.join()
         self._receive_thread.terminate()
+        self._receive_thread.join()

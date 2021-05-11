@@ -61,3 +61,4 @@ class MessageContainer:
 
     def __del__(self):
         self.thread.terminate()
+        self.thread.join()

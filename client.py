@@ -109,9 +109,10 @@ class Client:
 
     def __del__(self):
         print("El")
-        self.process.terminate()
-        print("El2")
         del self.client_node
+        self.process.terminate()
+        self.process.join()
+        print("El2")
 
     @execute_periodically(5)
     def _reload_all(self):
