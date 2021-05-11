@@ -1,7 +1,6 @@
 import os
 import pickle
 import socket
-import sys
 import threading
 import time
 from typing import Any, Tuple
@@ -65,9 +64,12 @@ class TableNode:
         self._mutex = threading.Lock()
 
         self._accept_thread = threading.Thread(target=self._accept_connection)
+        self._accept_thread.daemon = True
         self._accept_thread.start()
         self._receive_thread = threading.Thread(target=self._receive)
+        self._receive_thread.daemon = True
         self._receive_thread.start()
+        self._balance_thread = None
 
     @staticmethod
     def in_range(c: int, a: int, b: int):
@@ -76,11 +78,11 @@ class TableNode:
         return a < c or c <= b
 
     def _start_threads(self):
-        thread = threading.Thread(target=self.fix_dht_structure)
-        thread.start()
+        self._balance_thread = threading.Thread(target=self.fix_dht_structure)
+        self._balance_thread.daemon = True
+        self._balance_thread.start()
 
-    def create(self):
-        nickname = input("Enter your nickname:\n")
+    def create(self, nickname: str):
         self.nickname = nickname
         self._id = self.bytes_to_hash(nickname.encode())
 
@@ -225,8 +227,6 @@ class TableNode:
             invite = self.get_invite()
             self.send(self.successors[0], f"{finger} {self._id} {key} {invite}",
                       CommandCodes.FIND_SUCCESSOR)
-        if self._mutex.locked():
-            self._mutex.release()
 
     def distribute_chats(self):
         if self.predecessor is not None:
@@ -280,6 +280,7 @@ class TableNode:
         while True:
             connection = self._socket_listener.accept()
             key = connection[0].recv(32)
+            print("KEY:", key, self._token_dict.keys())
             if key in self._token_dict.keys():
                 connection[0].send("CODE: 000".encode())
                 self.log("Key accepted")
@@ -301,11 +302,12 @@ class TableNode:
             sid = self.bytes_to_hash(nickname)
 
             with self._mutex:
+                print("TUP")
                 self._ids.append(sid)
                 self._ciphers[sid] = ChatCipher(self._token_dict[key][0], self._token_dict[key][1], self.nickname)
                 self._peers[sid] = connection
 
-    def establish_connection(self, token: str) -> Tuple[bool, Any]:
+    def establish_connection(self, token: str, our_nickname: str = "") -> Tuple[bool, Any]:
         address, port, key, nickname = self._parse_invite_token(token)
         hashed_nickname = self.bytes_to_hash(nickname.encode())
 
@@ -328,6 +330,7 @@ class TableNode:
             return False, None
         return_code = socket_client.recv(9).decode()
         is_reg = False
+        print(return_code)
         if return_code != "CODE: 000":
             print("ERROR: Connection is not established")
             return False, None
@@ -336,13 +339,13 @@ class TableNode:
             if self.nickname is None:
                 is_reg = True
                 socket_client.send("REG".encode())
-                return_code = ""
-                while return_code != "CODE: 100":  # nickname accepted
-                    q = input("Your nickname:\n")
-                    socket_client.send(str(q).encode())
-                    return_code = socket_client.recv(9).decode()
-                self.nickname = q
-                self._id = self.bytes_to_hash(q.encode())
+                print("GG")
+                socket_client.send(str(our_nickname).encode())
+                return_code = socket_client.recv(9).decode()
+                if return_code != "CODE: 100":
+                    return False, None
+                self.nickname = our_nickname
+                self._id = self.bytes_to_hash(our_nickname.encode())
             else:
                 socket_client.send("CON".encode())
                 socket_client.send(str(self.nickname).encode())
@@ -462,6 +465,7 @@ class TableNode:
             invite += key.hex()
             invite += self.nickname
             self._invite = invite
+        print(self._token_dict)
         return invite
 
     def _generate_chat_token(self):
