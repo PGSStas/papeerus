@@ -27,8 +27,10 @@ class TableNode:
     _token_dict = {}
     _successor_query = {}
     _key_to_chat = {}
+    local_chats = {}
 
-    REQUEST_TIMEOUT = 0.2
+    RECEIVE_TIMEOUT = 0.2
+    REQUEST_TIMEOUT = 20
     SUCCESSOR_COUNT = 3
 
     def __init__(self):
@@ -67,10 +69,6 @@ class TableNode:
         self._receive_thread = threading.Thread(target=self._receive)
         self._receive_thread.start()
 
-        # Message
-        self.storage = {}
-        self.count = {}
-
     @staticmethod
     def in_range(c: int, a: int, b: int):
         if a < b:
@@ -81,18 +79,10 @@ class TableNode:
         thread = threading.Thread(target=self.fix_dht_structure)
         thread.start()
 
-    @execute_periodically(0.5)
-    def fix_dht_structure(self):
-        with self._mutex:
-            self.find_and_delete_missing()
-        self.stabilize()
-        self.fix_fingers()
-        self.log(f"Working normal {time.time()}")
-
     def create(self):
         nickname = input("Enter your nickname:\n")
         self.nickname = nickname
-        self._id = int(sha1(nickname.encode()).hexdigest(), 16) % (2 ** self._m)
+        self._id = self.bytes_to_hash(nickname.encode())
 
         self.successors = [self._id] * len(self.successors)
         self.predecessor = None
@@ -171,6 +161,13 @@ class TableNode:
                       f"{self.successors[first_none - 1]} {self._id} {key} {self._invite}",
                       CommandCodes.FIND_SUCCESSOR)
 
+    @execute_periodically(0.5)
+    def fix_dht_structure(self):
+        with self._mutex:
+            self.find_and_delete_missing()
+        self.fix_fingers()
+        self.stabilize()
+
     def notify(self, node_id):
         with self._mutex:
             if self.predecessor is None or self.in_range(node_id, self.predecessor, self._id):
@@ -218,6 +215,7 @@ class TableNode:
     def fix_fingers(self):
         with self._mutex:
             boolean = self.successors[0] != self._id and not self._fixing_fingers[0]
+            self.find_and_delete_missing()
         if boolean:
             with self._mutex:
                 self._fixing_fingers = True, self.successors[0]
@@ -229,6 +227,16 @@ class TableNode:
                       CommandCodes.FIND_SUCCESSOR)
         if self._mutex.locked():
             self._mutex.release()
+
+    def distribute_chats(self):
+        if self.predecessor is not None:
+            with self._mutex:
+                m1, _ = self._message_container.split_by(self.predecessor)
+            self.send_bytes(self.predecessor, pickle.dumps(m1), CommandCodes.RECEIVE_CHAT_COPY)
+        if self.successors[0] is not None:
+            with self._mutex:
+                full_chat = self._message_container.get_chat()
+            self.send_bytes(self.successors[0], pickle.dumps(full_chat), CommandCodes.RECEIVE_CHAT_COPY)
 
     def pass_message(self, x: int, message: str):
         with self._mutex:
@@ -243,11 +251,11 @@ class TableNode:
         self._message_container.add_message(x, message)
 
     def get_chat(self, x: bytes):
-        x = int(sha1(x).hexdigest(), 16) % (2 ** self._m)
+        x = self.bytes_to_hash(x)
         return self._message_container.get_messages(x)
 
     def reload_chat(self, x: bytes):
-        x = int(sha1(x).hexdigest(), 16) % (2 ** self._m)
+        x = self.bytes_to_hash(x)
         key = os.urandom(32).hex()
 
         self._successor_query[key] = -300
@@ -262,7 +270,11 @@ class TableNode:
 
     def chat_response(self, key: int, messages: bytes):
         messages = pickle.loads(messages)
-        self._message_container.set_chat(key, messages)
+        self.local_chats[key] = messages
+
+    def receive_chat_copy(self, messages: bytes):
+        messages = pickle.loads(messages)
+        self._message_container.merge_chats(messages)
 
     def _accept_connection(self):
         while True:
@@ -286,7 +298,7 @@ class TableNode:
             chat_token = self._generate_chat_token()
             connection[0].send(chat_token.encode())
 
-            sid = int(sha1(nickname).hexdigest(), 16) % (2 ** self._m)
+            sid = self.bytes_to_hash(nickname)
 
             with self._mutex:
                 self._ids.append(sid)
@@ -295,7 +307,7 @@ class TableNode:
 
     def establish_connection(self, token: str) -> Tuple[bool, Any]:
         address, port, key, nickname = self._parse_invite_token(token)
-        hashed_nickname = int(sha1(nickname.encode()).hexdigest(), 16) % (2 ** self._m)
+        hashed_nickname = self.bytes_to_hash(nickname.encode())
 
         if key in self._token_dict.keys() or hashed_nickname in self._ids:
             self.log("Already connected")
@@ -330,7 +342,7 @@ class TableNode:
                     socket_client.send(str(q).encode())
                     return_code = socket_client.recv(9).decode()
                 self.nickname = q
-                self._id = int(sha1(q.encode()).hexdigest(), 16) % (2 ** self._m)
+                self._id = self.bytes_to_hash(q.encode())
             else:
                 socket_client.send("CON".encode())
                 socket_client.send(str(self.nickname).encode())
@@ -352,7 +364,7 @@ class TableNode:
         return True, None
 
     def send_chat_message(self, key: bytes, message: bytes):
-        key = int(sha1(key).hexdigest(), 16) % (2 ** self._m)
+        key = self.bytes_to_hash(key)
         self.send(self._id, f"{key} {message.hex()}", CommandCodes.PASS_MESSAGE)
 
     def send(self, sid: int, message: str, code: CommandCodes = CommandCodes.TEXT_MESSAGE):
@@ -400,7 +412,7 @@ class TableNode:
                         sid = ids[i]
                         sock = self._peers[sid][0]
                         cipher = self._ciphers[sid]
-                    sock.settimeout(self.REQUEST_TIMEOUT)
+                    sock.settimeout(self.RECEIVE_TIMEOUT)
                     buf = sock.recv(4)
                     if buf == b"":
                         sock.settimeout(0)
@@ -482,13 +494,11 @@ class TableNode:
         return iv, message_token
 
     def find_and_delete_missing(self):
-        if self._fixing_successors[0] and self._fixing_successors[1] not in self._ids \
-                and self._fixing_successors[1] == -1:
+        if self._fixing_successors[0] and (self._fixing_successors[1] not in self._ids \
+                or self._fixing_successors[1] == -1):
             self._fixing_successors = False, -1
-            print("Successor timeout", self._fixing_successors[1], self._ids)
-        if self._fixing_fingers[0] and self._fixing_fingers[1] not in self._ids and self._fixing_fingers[1] != -1:
+        if self._fixing_fingers[0] and (self._fixing_fingers[1] not in self._ids or self._fixing_fingers[1] == -1):
             self._fixing_fingers = False, -1
-            print("Finger timeout")
 
         if self.predecessor not in self._ids:
             self.predecessor = None
@@ -511,10 +521,9 @@ class TableNode:
             if not is_needed_to_fix and self._fingers[i] is not None \
                     and self._fingers[i] not in self._ids and self._fingers[i] != self._id:
                 is_needed_to_fix = True
-                self._finger_num = i
-            if is_needed_to_fix:
-                self._fingers[i] = None
+                break
         if is_needed_to_fix:
+            self._fingers = [None] * self._m
             print("Finger missing. Rebuilding list")
 
     def _delete_user(self, sid: int):
@@ -550,3 +559,7 @@ class TableNode:
         else:
             invite = self.generate_invite()
         return invite
+
+    @staticmethod
+    def bytes_to_hash(x: bytes):
+        return int(sha1(x).hexdigest(), 16) % (2 ** 160)

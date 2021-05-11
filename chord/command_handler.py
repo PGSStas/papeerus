@@ -53,6 +53,9 @@ class CommandHandler:
         key, messages = data[1].decode().split(" ", 1)
         self.node.chat_response(int(key), bytes.fromhex(messages))
 
+    def _receive_chat_copy(self, data):
+        self.node.receive_chat_copy(data[1])
+
     def handle_commands(self, code, data):
         if code == CommandCodes.TEXT_MESSAGE:
             self.node.receive_message(data)
@@ -89,3 +92,6 @@ class CommandHandler:
 
         elif code == CommandCodes.CHAT_RESPONSE:
             self._chat_response(data)
+
+        elif code == CommandCodes.RECEIVE_CHAT_COPY:
+            self._receive_chat_copy(data)
