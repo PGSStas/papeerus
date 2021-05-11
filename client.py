@@ -56,23 +56,6 @@ class Client:
         for message in messages:
             salt = bytes.fromhex(message[1])[32:]
             deciphered_message = self.parse_message(chat_id, bytes.fromhex(message[1])[32:])
-            for i in range(len(deciphered_message[1])):
-                if deciphered_message[1][0] == MessageCodes.FILE:
-                    code, what_format, data = decrypted
-                  
-                    if hsh in self._path_map:
-                        print(self._path_map[hsh])
-                        continue
-                    dir = str(hashlib.sha1(self.client_node.nickname.encode()).hexdigest()) + "_media"
-                    if not os.path.exists(dir):
-                        os.makedirs(dir)
-                    path = dir + '/' + str(hashlib.sha1(data).hexdigest()) + "." + what_format
-                    print(data)
-                    file = open(file=path, mode="wb")
-                    file.write(data)
-                    file.close()
-                    print(path)
-                    self._path_map[hsh] = path
             ans.append((message[0], salt, deciphered_message[0], deciphered_message[1]))
         return ans
 
