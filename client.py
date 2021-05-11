@@ -1,6 +1,9 @@
 import os
 import pickle
+import random
 import threading
+import json
+import hashlib
 
 from chord.table_node import TableNode
 from chord.decorators import execute_periodically
@@ -11,6 +14,7 @@ from message_codes import MessageCodes
 class Client:
     _chat_data = []
     _ciphers = []
+    _path_map = {}
 
     def __init__(self):
         print("Started client")
@@ -25,9 +29,11 @@ class Client:
             q = input("c - create own ring; r - join to the known ring\n")
             if q == "c":
                 self.client_node.create()
+                self.load_chats()
             elif q == "r":
                 q = input("Please, write your invite token:\n")
                 self.client_node.establish_connection(q)
+                self.load_chats()
                 # try:
                 #     self.client_node.establish_connection(q)
                 #     break
@@ -54,8 +60,10 @@ class Client:
                 print(self._chat_data)
             elif ls[0] == "newchat":
                 print(self.generate_token())
+                self.save_chats()
             elif ls[0] == "enterchat":
                 self.parse_token(ls[1])
+                self.save_chats()
             elif ls[0] == "reload_chat":
                 self.client_node.reload_chat(self._chat_data[int(ls[1])][1])
             elif len(ls) == 2 and ls[0] == "chat" and self._is_integer(ls[1]):
@@ -63,7 +71,23 @@ class Client:
                 chat_id = self.client_node.bytes_to_hash(self._chat_data[int(ls[1])][1])
                 messages = self.client_node.local_chats.get(chat_id, [])
                 for message in messages:
-                    print(self.parse_message(int(ls[1]), bytes.fromhex(message[1])[32:]))
+                    decrypted = self.parse_message(int(ls[1]), bytes.fromhex(message[1])[32:])[0]
+                    if len(decrypted) == 2:
+                        print(decrypted)
+                    else:
+                        code, what_format, data = decrypted
+                        hsh = data[:min(32, len(data))]
+                        if hsh in self._path_map:
+                            print(self._path_map[hsh])
+                            continue
+                        dir = str(hashlib.sha1(self.client_node.nickname.encode()).hexdigest()) + "_media"
+                        if not os.path.exists(dir):
+                            os.makedirs(dir)
+                        path = dir + '/' + str(hashlib.sha1(data).hexdigest()) + "." + what_format
+                        file = open(file=path, mode="wb")
+                        file.write(data)
+                        print(path)
+                        self._path_map[hsh] = path
             elif self._is_integer(ls[0]):
                 chat_id = int(ls[0])
                 list_message = []
@@ -116,6 +140,27 @@ class Client:
         for i in range(len(message_list)):
             message_list[i] = pickle.loads(self._ciphers[chat_id].decrypt_message(message_list[i]))
         return message_list
+
+    def load_chats(self):
+        path = file = self.client_node.nickname + "_keys.json"
+        if os.path.exists(path):
+            jfile = open(file=path, mode="r")
+            data_hex = json.load(jfile)
+            data_bytes = []
+            for i, j in data_hex:
+                data_bytes.append((bytes.fromhex(i), bytes.fromhex(j)))
+            self._chat_data = data_bytes
+            self._ciphers = []
+            for token, iv in self._chat_data:
+                self._ciphers.append(ChatCipher(token, iv, self.client_node.nickname))
+
+    def save_chats(self):
+        data_hex = []
+        for i, j in self._chat_data:
+            data_hex.append((bytes.hex(i), bytes.hex(j)))
+        jstr = json.dumps(data_hex)
+        file = open(file=self.client_node.nickname + "_keys.json", mode="w")
+        file.write(jstr)
 
     @execute_periodically(5)
     def _reload_all(self):
