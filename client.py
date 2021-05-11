@@ -6,6 +6,7 @@ from chord.table_node import TableNode
 from chord.decorators import execute_periodically
 from security.chat_cipher import ChatCipher
 from message_codes import MessageCodes
+from exceptions.registration_exeptions import ExistingNameException
 
 
 class Client:
@@ -27,13 +28,12 @@ class Client:
                 self.client_node.create()
             elif q == "r":
                 q = input("Please, write your invite token:\n")
-                self.client_node.establish_connection(q)
-                # try:
-                #     self.client_node.establish_connection(q)
-                #     break
-                # except Exception:
-                #     pass
-                # TODO: exception for existing nickname
+                try:
+                    self.client_node.establish_connection(q)
+                except ExistingNameException as ex:
+                    print(ex)
+                    continue
+                break
             else:
                 continue
             break
