@@ -50,7 +50,10 @@ class TokenDialog(QtWidgets.QDialog):
             return
         self.name = self.name_edit.toPlainText()
         self.token = self.token_edit.toPlainText()
-        # TO DO: connect behavior for connecting the existing ring
+        status, _ = self.parent.client.register_network(self.token, self.name)
+        if not status:
+            QtWidgets.QMessageBox.warning(self, "Error", "Nickname was taken")
+            return
         self.parent.name = self.name
         self.parent.token = self.token
         self.done(QDialog.Accepted)

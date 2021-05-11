@@ -1,4 +1,4 @@
-import multiprocessing
+import threading
 import time
 from chord.decorators import execute_periodically
 
@@ -8,8 +8,8 @@ class MessageContainer:
     _messages = {}
 
     def __init__(self):
-        self.mutex = multiprocessing.Lock()
-        self.thread = multiprocessing.Process(target=self._delete_old_messages)
+        self.mutex = threading.Lock()
+        self.thread = threading.Thread(target=self._delete_old_messages)
         self.thread.start()
 
     def add_message(self, key: int, message: str):
@@ -58,7 +58,3 @@ class MessageContainer:
             cur_time = time.time()
             for key in self._messages.keys():
                 self._messages[key] = [x for x in self._messages[key] if cur_time - x[0] < self.MESSAGE_LIFETIME]
-
-    def __del__(self):
-        self.thread.terminate()
-        self.thread.join()

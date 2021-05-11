@@ -1,7 +1,7 @@
 import os
 import pickle
 import socket
-import multiprocessing
+import threading
 import time
 from typing import Any, Tuple
 
@@ -61,11 +61,11 @@ class TableNode:
         self._socket_listener.bind(("localhost", 0))
         self._socket_listener.listen()
         print(f"Listening on 127.0.0.1:{self._socket_listener.getsockname()[1]}")
-        self._mutex = multiprocessing.Lock()
+        self._mutex = threading.Lock()
 
-        self._accept_thread = multiprocessing.Process(target=self._accept_connection)
+        self._accept_thread = threading.Thread(target=self._accept_connection)
         self._accept_thread.start()
-        self._receive_thread = multiprocessing.Process(target=self._receive)
+        self._receive_thread = threading.Thread(target=self._receive)
         self._receive_thread.start()
         self._balance_thread = None
 
@@ -76,7 +76,7 @@ class TableNode:
         return a < c or c <= b
 
     def _start_threads(self):
-        self._balance_thread = multiprocessing.Process(target=self.fix_dht_structure)
+        self._balance_thread = threading.Thread(target=self.fix_dht_structure)
         self._balance_thread.start()
 
     def create(self, nickname: str):
@@ -277,6 +277,7 @@ class TableNode:
         while True:
             connection = self._socket_listener.accept()
             key = connection[0].recv(32)
+            print("KEY:", key, self._token_dict.keys())
             if key in self._token_dict.keys():
                 connection[0].send("CODE: 000".encode())
                 self.log("Key accepted")
@@ -302,7 +303,7 @@ class TableNode:
                 self._ciphers[sid] = ChatCipher(self._token_dict[key][0], self._token_dict[key][1], self.nickname)
                 self._peers[sid] = connection
 
-    def establish_connection(self, token: str) -> Tuple[bool, Any]:
+    def establish_connection(self, token: str, our_nickname: str = "") -> Tuple[bool, Any]:
         address, port, key, nickname = self._parse_invite_token(token)
         hashed_nickname = self.bytes_to_hash(nickname.encode())
 
@@ -325,6 +326,7 @@ class TableNode:
             return False, None
         return_code = socket_client.recv(9).decode()
         is_reg = False
+        print(return_code)
         if return_code != "CODE: 000":
             print("ERROR: Connection is not established")
             return False, None
@@ -333,13 +335,12 @@ class TableNode:
             if self.nickname is None:
                 is_reg = True
                 socket_client.send("REG".encode())
-                return_code = ""
-                while return_code != "CODE: 100":  # nickname accepted
-                    q = input("Your nickname:\n")
-                    socket_client.send(str(q).encode())
-                    return_code = socket_client.recv(9).decode()
-                self.nickname = q
-                self._id = self.bytes_to_hash(q.encode())
+                socket_client.send(str(nickname).encode())
+                return_code = socket_client.recv(9).decode()
+                if return_code != "CODE: 100":
+                    return False, None
+                self.nickname = nickname
+                self._id = self.bytes_to_hash(nickname.encode())
             else:
                 socket_client.send("CON".encode())
                 socket_client.send(str(self.nickname).encode())
@@ -459,6 +460,7 @@ class TableNode:
             invite += key.hex()
             invite += self.nickname
             self._invite = invite
+        print(self._token_dict)
         return invite
 
     def _generate_chat_token(self):
@@ -565,9 +567,6 @@ class TableNode:
         print("Pisun")
         del self._message_container
         if self._balance_thread is not None:
-            self._balance_thread.terminate()
             self._balance_thread.join()
-        self._accept_thread.terminate()
         self._accept_thread.join()
-        self._receive_thread.terminate()
         self._receive_thread.join()

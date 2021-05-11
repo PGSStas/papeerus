@@ -1,6 +1,6 @@
 import os
 import pickle
-import multiprocessing
+import threading
 
 from chord.table_node import TableNode
 from chord.decorators import execute_periodically
@@ -16,16 +16,16 @@ class Client:
         print("Started client")
 
         self.client_node = TableNode()
-        self.chat_mutex = multiprocessing.Lock()
-        self.process = multiprocessing.Process(target=self._reload_all)
+        self.chat_mutex = threading.Lock()
+        self.process = threading.Thread(target=self._reload_all)
         self.process.start()
 
     def create_network(self, nickname):
         self.client_node.create(nickname)
-        return self.client_node.get_invite()
+        return self.client_node.generate_invite()
 
-    def register_network(self, token: str):
-        self.client_node.establish_connection(token)
+    def register_network(self, token: str, nickname: str):
+        return self.client_node.establish_connection(token, nickname)
 
     def input_cycle(self):
         while True:
@@ -110,7 +110,6 @@ class Client:
     def __del__(self):
         print("El")
         del self.client_node
-        self.process.terminate()
         self.process.join()
         print("El2")
 
