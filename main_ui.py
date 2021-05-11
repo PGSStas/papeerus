@@ -234,8 +234,11 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         file = QtWidgets.QFileDialog(self.centralwidget).getOpenFileName()
         self.current_chat_files.append(file[0])
 
-    def message(self, name, text, time, img="ui_resourses/res/avatar.jpg"):
-        message = message_widget.MessageWidget()
+    def message(self, name, text, time, img="ui_resourses/res/avatar.jpg", is_file=False, path=""):
+        if not is_file:
+            message = message_widget.MessageWidget()
+        else:
+            message = message_widget.MessageWidget(is_file, path)
         message.set_name(name)
         message.set_text(text)
         message.set_time(time)
@@ -276,17 +279,24 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         for message in chat:
             chat_text = ""
             for blocks in message[3]:
+                is_file = False
+                path = ""
                 if blocks[0] == MessageCodes.TEXT and blocks[1] != "":
                     chat_text += blocks[1] + "\n"
                 elif blocks[0] == MessageCodes.FILE:
+                    is_file = True
                     directory = str(hashlib.sha1(self.client.client_node.nickname.encode()).hexdigest()) + "_media"
                     if not os.path.exists(directory):
                         os.makedirs(directory)
                     path = directory + '/' + str(hashlib.sha1(blocks[2]).hexdigest()) + "." + blocks[1]
                     with open(file=path, mode="wb") as file:
                         file.write(blocks[2])
-                    chat_text += f"Received {path}\n"
-            self.message(message[2], chat_text[:-1], str(datetime.datetime.fromtimestamp(message[0]).strftime('%c')))
+                    chat_text += f"Received {blocks[1]} file\n"
+            self.message(message[2],
+                         chat_text[:-1],
+                         str(datetime.datetime.fromtimestamp(message[0]).strftime('%c')),
+                         is_file=is_file,
+                         path=path)
 
     def chat_changed(self):
         item = self.chat_list.currentItem()

@@ -1,9 +1,36 @@
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtGui import QPixmap
+import os
+import platform
+import subprocess
+
+
+class ClickableLabel(QtWidgets.QLabel):
+    def __init__(self, parent, file: str):
+        super(ClickableLabel, self).__init__(parent)
+        self.file = file
+
+    def mouseReleaseEvent(self, e):
+        super().mouseReleaseEvent(e)
+        self.open_file(self.file)
+
+    def enterEvent(self, event: QtCore.QEvent) -> None:
+        super(ClickableLabel, self).enterEvent(event)
+        self.setStyleSheet("QLabel{ text-decoration: underline; }")
+
+    def leaveEvent(self, event: QtCore.QEvent) -> None:
+        super(ClickableLabel, self).leaveEvent(event)
+        self.setStyleSheet("QLabel{  }")
+
+    def open_file(self, path: str):
+        if platform.system() == "Windows":
+            os.startfile(path)
+        else:
+            subprocess.Popen(["xdg-open", path])
 
 
 class MessageWidget(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self, clickable=False, file=""):
         super().__init__()
         self.setObjectName("message_widget")
         self.resize(600, 60)
@@ -13,14 +40,17 @@ class MessageWidget(QtWidgets.QWidget):
         self.gridLayout.setContentsMargins(0, 0, 0, 0)
         self.gridLayout.setSpacing(0)
         self.gridLayout.setObjectName("gridLayout")
-        self.message_text_label = QtWidgets.QLabel(self)
+        if not clickable:
+            self.message_text_label = QtWidgets.QLabel(self)
+        else:
+            self.message_text_label = ClickableLabel(self, file)
         self.message_text_label.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.message_text_label.setFrameShadow(QtWidgets.QFrame.Plain)
         self.message_text_label.setIndent(5)
         self.message_text_label.setMargin(5)
         self.message_text_label.setObjectName("message_text_label")
         self.time_label = QtWidgets.QLabel(self)
-        self.time_label.setMaximumSize(QtCore.QSize(50, 40))
+        self.time_label.setMaximumSize(QtCore.QSize(175, 40))
         self.time_label.setAlignment(QtCore.Qt.AlignBottom | QtCore.Qt.AlignLeading | QtCore.Qt.AlignLeft)
         self.time_label.setObjectName("time_label")
         self.sender_name_label = QtWidgets.QLabel(self)

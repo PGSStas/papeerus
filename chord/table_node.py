@@ -33,7 +33,7 @@ class TableNode:
     SUCCESSOR_COUNT = 3
 
     def __init__(self):
-        print(os.getpid())
+        # print(os.getpid())
         # Personal data
         self._id = None
         self.nickname = None
@@ -60,7 +60,7 @@ class TableNode:
         self._socket_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket_listener.bind(("localhost", 0))
         self._socket_listener.listen()
-        print(f"Listening on 127.0.0.1:{self._socket_listener.getsockname()[1]}")
+        # print(f"Listening on 127.0.0.1:{self._socket_listener.getsockname()[1]}")
         self._mutex = threading.Lock()
 
         self._accept_thread = threading.Thread(target=self._accept_connection)
@@ -135,7 +135,7 @@ class TableNode:
                 if not self._is_started:
                     self._is_started = True
                     self._start_threads()
-                print(f"Successor {- sender - 100} received")
+                # print(f"Successor {- sender - 100} received")
             elif sender == -200:
                 self._fixing_fingers = False, -1
                 self._fingers[self._finger_num] = successor
@@ -203,7 +203,7 @@ class TableNode:
                     self.successors[self._successor_num] is not None \
                     and (self.in_range(s_predecessor, send_id, self.successors[self._successor_num])
                          or self.predecessor == self.successors[0]):
-                print(f"Successor {self._successor_num} received: stabilized")
+                # print(f"Successor {self._successor_num} received: stabilized")
                 self.successors = self.successors[:self._successor_num] + [s_predecessor] + self.successors[
                                                                                             self._successor_num + 1:]
                 is_stabilized = True
@@ -280,7 +280,7 @@ class TableNode:
         while True:
             connection = self._socket_listener.accept()
             key = connection[0].recv(32)
-            print("KEY:", key, self._token_dict.keys())
+            # print("KEY:", key, self._token_dict.keys())
             if key in self._token_dict.keys():
                 connection[0].send("CODE: 000".encode())
                 self.log("Key accepted")
@@ -302,7 +302,7 @@ class TableNode:
             sid = self.bytes_to_hash(nickname)
 
             with self._mutex:
-                print("TUP")
+                # print("TUP")
                 self._ids.append(sid)
                 self._ciphers[sid] = ChatCipher(self._token_dict[key][0], self._token_dict[key][1], self.nickname)
                 self._peers[sid] = connection
@@ -319,27 +319,27 @@ class TableNode:
         try:
             socket_client.connect((address, port))
         except ConnectionRefusedError:
-            print(f"Failed to connect {nickname}")
+            # print(f"Failed to connect {nickname}")
             return False, None
 
         self.log("Sending key - " + str(key))
         try:
             socket_client.send(key)
         except BrokenPipeError:
-            print(f"Failed to connect {nickname}")
+            # print(f"Failed to connect {nickname}")
             return False, None
         return_code = socket_client.recv(9).decode()
         is_reg = False
-        print(return_code)
+        # print(return_code)
         if return_code != "CODE: 000":
-            print("ERROR: Connection is not established")
+            # print("ERROR: Connection is not established")
             return False, None
 
         try:
             if self.nickname is None:
                 is_reg = True
                 socket_client.send("REG".encode())
-                print("GG")
+                # print("GG")
                 socket_client.send(str(our_nickname).encode())
                 return_code = socket_client.recv(9).decode()
                 if return_code != "CODE: 100":
@@ -350,7 +350,7 @@ class TableNode:
                 socket_client.send("CON".encode())
                 socket_client.send(str(self.nickname).encode())
         except BrokenPipeError:
-            print(f"Failed to connect {nickname}")
+            # print(f"Failed to connect {nickname}")
             return False, None
 
         iv, message_token = self._parse_chat_token(socket_client.recv(96).decode())
@@ -362,7 +362,7 @@ class TableNode:
 
         if is_reg:
             self.join(hashed_nickname)
-            print("Success! You connected to user {}".format(nickname))
+            # print("Success! You connected to user {}".format(nickname))
 
         return True, None
 
@@ -381,7 +381,7 @@ class TableNode:
         with self._mutex:
             if sid not in self._ids:
                 self._fixing_successors = False, -1
-                print("Lost smtng", sid)
+                # print("Lost smtng", sid)
                 return
 
             sock = self._peers[sid][0]
@@ -392,7 +392,8 @@ class TableNode:
         try:
             sock.sendall(arr)
         except BrokenPipeError:
-            print(f"Data, that been sending to {sid} was lost")
+            # print(f"Data, that been sending to {sid} was lost")
+            pass
 
     def send_all(self, message: list):
         for i in self.get_connections():
@@ -465,7 +466,7 @@ class TableNode:
             invite += key.hex()
             invite += self.nickname
             self._invite = invite
-        print(self._token_dict)
+        # print(self._token_dict)
         return invite
 
     def _generate_chat_token(self):
@@ -517,8 +518,9 @@ class TableNode:
             if is_needed_to_fix:
                 self.successors[i] = None
         if is_needed_to_fix:
-            print("Successor missing. Rebuilding list")
-            print(self.successors, self._id, self._ids)
+            # print("Successor missing. Rebuilding list")
+            # print(self.successors, self._id, self._ids)
+            pass
 
         is_needed_to_fix = False
         for i in range(len(self._fingers)):
@@ -528,7 +530,7 @@ class TableNode:
                 break
         if is_needed_to_fix:
             self._fingers = [None] * self._m
-            print("Finger missing. Rebuilding list")
+            # print("Finger missing. Rebuilding list")
 
     def _delete_user(self, sid: int):
         with self._mutex:
@@ -544,14 +546,15 @@ class TableNode:
         self.update_successors()
 
     def log(self, msg):
-        with open("./log.txt", "a") as log_file:
-            log_file.write("{}:{} - ".format(self.nickname, self._id) + msg + '\n')
+        # with open("./log.txt", "a") as log_file:
+        #     log_file.write("{}:{} - ".format(self.nickname, self._id) + msg + '\n')
+        pass
 
-    def print_info(self):
-        print("Id: ", self._id)
-        print("Successor: ", self.successors)
-        print("Predecessor", self.predecessor)
-        print("Connections", self._peers.keys())
+    # def print_info(self):
+    #     print("Id: ", self._id)
+    #     print("Successor: ", self.successors)
+    #     print("Predecessor", self.predecessor)
+    #     print("Connections", self._peers.keys())
 
     def get_connections(self):
         ans = self._peers.keys()
