@@ -58,12 +58,13 @@ class Client:
                 self.parse_token(ls[1])
             elif ls[0] == "reload_chat":
                 self.client_node.reload_chat(self._chat_data[int(ls[1])][1])
-            elif ls[0] == "chat":
+            elif len(ls) == 2 and ls[0] == "chat" and self._is_integer(ls[1]):
                 print(f"CHAT {ls[1]}:")
-                messages = self.client_node.get_chat(self._chat_data[int(ls[1])][1])
-                for i in range(len(messages)):
-                    print(self.parse_message(int(ls[1]), bytes.fromhex(messages[i][1])))
-            else:
+                chat_id = self.client_node.bytes_to_hash(self._chat_data[int(ls[1])][1])
+                messages = self.client_node.local_chats.get(chat_id, [])
+                for message in messages:
+                    print(self.parse_message(int(ls[1]), bytes.fromhex(message[1])[32:]))
+            elif self._is_integer(ls[0]):
                 chat_id = int(ls[0])
                 list_message = []
                 text_message = ""
@@ -83,9 +84,10 @@ class Client:
                         text_message += q + '\n'
                 if text_message != "":
                     list_message.append((MessageCodes.TEXT, text_message))
+                print(list_message)
                 with self.chat_mutex:
-                    self.client_node.send_chat_message(self._chat_data[chat_id][1],
-                                                       self.create_message(chat_id, *list_message))
+                    list_message = self.create_message(chat_id, *list_message)
+                    self.client_node.send_chat_message(self._chat_data[chat_id][1], os.urandom(32) + list_message)
 
     def generate_token(self):
         iv = os.urandom(16)
@@ -120,3 +122,13 @@ class Client:
         with self.chat_mutex:
             for token in self._chat_data:
                 self.client_node.reload_chat(token[1])
+        self.client_node.distribute_chats()
+
+    @staticmethod
+    def _is_integer(num):
+        try:
+            int(num)
+        except ValueError:
+            return False
+        else:
+            return True
