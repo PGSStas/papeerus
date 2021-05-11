@@ -21,100 +21,72 @@ class Client:
 
         self.client_node = TableNode()
         self.chat_mutex = threading.Lock()
-        thread = threading.Thread(target=self._reload_all)
-        thread.start()
 
-    def input_cycle(self):
-        while True:
-            q = input("c - create own ring; r - join to the known ring\n")
-            if q == "c":
-                self.client_node.create()
-                self.load_chats()
-            elif q == "r":
-                q = input("Please, write your invite token:\n")
-                self.client_node.establish_connection(q)
-                self.load_chats()
-                # try:
-                #     self.client_node.establish_connection(q)
-                #     break
-                # except Exception:
-                #     pass
-                # TODO: exception for existing nickname
-            else:
-                continue
-            break
+        self.process = threading.Thread(target=self._reload_all)
+        self.process.daemon = True
+        self.process.start()
 
-        while True:
-            q = input()
-            ls = q.split(' ')
-            if ls[0] == "quit":
-                # Exit from program
-                os._exit(0)
-            elif ls[0] == "invite":
-                print(self.client_node.generate_invite())
-            elif ls[0] == "info":
-                self.client_node.print_info()
-                print("Messages:", self.client_node._message_container._messages)
-                print("Chats:", self._chat_data)
-            elif ls[0] == "chats":
-                print(self._chat_data)
-            elif ls[0] == "newchat":
-                print(self.generate_token())
-                self.save_chats()
-            elif ls[0] == "enterchat":
-                self.parse_token(ls[1])
-                self.save_chats()
-            elif ls[0] == "reload_chat":
-                self.client_node.reload_chat(self._chat_data[int(ls[1])][1])
-            elif len(ls) == 2 and ls[0] == "chat" and self._is_integer(ls[1]):
-                print(f"CHAT {ls[1]}:")
-                chat_id = self.client_node.bytes_to_hash(self._chat_data[int(ls[1])][1])
-                messages = self.client_node.local_chats.get(chat_id, [])
-                for message in messages:
-                    decrypted = self.parse_message(int(ls[1]), bytes.fromhex(message[1])[32:])[0]
-                    if len(decrypted) == 2:
-                        print(decrypted)
-                    else:
-                        code, what_format, data = decrypted
-                        hsh = data[:min(32, len(data))]
-                        if hsh in self._path_map:
-                            print(self._path_map[hsh])
-                            continue
-                        dir = str(hashlib.sha1(self.client_node.nickname.encode()).hexdigest()) + "_media"
-                        if not os.path.exists(dir):
-                            os.makedirs(dir)
-                        path = dir + '/' + str(hashlib.sha1(data).hexdigest()) + "." + what_format
-                        print(data)
-                        file = open(file=path, mode="wb")
-                        file.write(data)
-                        file.close()
-                        print(path)
-                        self._path_map[hsh] = path
-            elif self._is_integer(ls[0]):
-                chat_id = int(ls[0])
-                list_message = []
-                text_message = ""
-                while True:
-                    q = input()
-                    ls = q.split(' ')
-                    if q == "send":
-                        break
-                    if len(ls) > 1 and ls[0] == "attach":
-                        path = q.split(" ", 1)[1]
-                        if os.path.exists(path):
-                            what_format = path.split(".")[-1]
-                            with open(file=path,mode="rb") as file:
-                                data = file.read()
-                            message = (MessageCodes.FILE, what_format, data)
-                            list_message.append(message)
-                    else:
-                        text_message += q + '\n'
-                if text_message != "":
-                    list_message.append((MessageCodes.TEXT, text_message))
-                print(list_message)
-                with self.chat_mutex:
-                    list_message = self.create_message(chat_id, *list_message)
-                    self.client_node.send_chat_message(self._chat_data[chat_id][1], os.urandom(32) + list_message)
+    def create_network(self, nickname):
+        self.client_node.create(nickname)
+        return self.client_node.generate_invite()
+
+    def register_network(self, token: str, nickname: str):
+        return self.client_node.establish_connection(token, nickname)
+
+    def create_chat(self):
+        self.save_chats()
+        return self.generate_token()
+
+    def enter_chat(self, token: str):
+        self.save_chats()
+        self.parse_token(token)
+
+    def _reload_chat(self, chat_id: int):
+        if chat_id < 0 or chat_id >= len(self._chat_data):
+            return False
+        self.client_node.reload_chat(self._chat_data[chat_id][1])
+        return True
+
+    def get_chat_data(self, chat_id: int):
+        if not self._reload_chat(chat_id):
+            return None
+        chat_hash = self.client_node.bytes_to_hash(self._chat_data[chat_id][1])
+        messages = self.client_node.local_chats.get(chat_hash, [])
+        ans = []
+        for message in messages:
+            salt = bytes.fromhex(message[1])[32:]
+            deciphered_message = self.parse_message(chat_id, bytes.fromhex(message[1])[32:])
+            for i in range(len(deciphered_message[1])):
+                if deciphered_message[1][0] == MessageCodes.FILE:
+                    code, what_format, data = decrypted
+                  
+                    if hsh in self._path_map:
+                        print(self._path_map[hsh])
+                        continue
+                    dir = str(hashlib.sha1(self.client_node.nickname.encode()).hexdigest()) + "_media"
+                    if not os.path.exists(dir):
+                        os.makedirs(dir)
+                    path = dir + '/' + str(hashlib.sha1(data).hexdigest()) + "." + what_format
+                    print(data)
+                    file = open(file=path, mode="wb")
+                    file.write(data)
+                    file.close()
+                    print(path)
+                    self._path_map[hsh] = path
+            ans.append((message[0], salt, deciphered_message[0], deciphered_message[1]))
+        return ans
+
+    def send_message(self, chat_id: int, message: str, files):
+        list_message = [(MessageCodes.TEXT, message)]
+        for path in files:
+            if os.path.exists(path):
+                what_format = path.split(".")[-1]
+                data = open(file=path, mode="rb").read()
+                message = (MessageCodes.FILE, what_format, data)
+                list_message.append(message)
+        with self.chat_mutex:
+            list_message = self.create_message(chat_id, self.client_node.nickname, *list_message)
+            self.client_node.send_chat_message(self._chat_data[chat_id][1], os.urandom(32) + list_message)
 
     def generate_token(self):
         iv = os.urandom(16)
@@ -132,17 +104,17 @@ class Client:
         self._chat_data.append((token, iv))
         self._ciphers.append(ChatCipher(token, iv, self.client_node.nickname))
 
-    def create_message(self, chat_id: int, *messages):
+    def create_message(self, chat_id: int, nickname: str, *messages):
         final_message = []
         for message in messages:
             final_message.append(self._ciphers[chat_id].encrypt_message(pickle.dumps(message)))
-        return pickle.dumps(final_message)
+        return pickle.dumps((nickname, final_message))
 
     def parse_message(self, chat_id: int, data: bytes):
-        message_list = pickle.loads(data)
+        nickname, message_list = pickle.loads(data)
         for i in range(len(message_list)):
             message_list[i] = pickle.loads(self._ciphers[chat_id].decrypt_message(message_list[i]))
-        return message_list
+        return nickname, message_list
 
     def load_chats(self):
         path = file = self.client_node.nickname + "_keys.json"

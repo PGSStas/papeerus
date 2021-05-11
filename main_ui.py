@@ -1,11 +1,18 @@
+import datetime
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 import sys
 
+from client import Client
+from message_codes import MessageCodes
 from ui_resourses import dialog_windows, message_widget
 
 
 class Ui_MainWindow(QtWidgets.QMainWindow):
     def __init__(self, main_window):
+        self.client = Client()
+        self.current_chat_files = []
+
         QtWidgets.QMainWindow.__init__(self)
         self.init_view(main_window)
         self.add_actions()
@@ -28,16 +35,20 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
         self.loading_window = dialog_windows.LoadingWindow(self)
 
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.refresh_all)
+        self.timer.start(1000)
+
     def init_view(self, main_window):
         f = open('ui_resourses/res/super.stylesheet', 'r')
         self.styleData = f.read()
         f.close()
 
-        main_window.setObjectName("MainWindow")
-        main_window.resize(800, 600)
-        main_window.setStyleSheet(self.styleData)
+        self.setObjectName("MainWindow")
+        self.resize(800, 600)
         self.setStyleSheet(self.styleData)
-        self.centralwidget = QtWidgets.QWidget(main_window)
+        self.setWindowIcon(QtGui.QIcon("ui_resourses/res/image.png"))
+        self.centralwidget = QtWidgets.QWidget(self)
         self.centralwidget.setStyleSheet("")
         self.centralwidget.setObjectName("centralwidget")
         self.gridLayout_2 = QtWidgets.QGridLayout(self.centralwidget)
@@ -181,10 +192,9 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.gridLayout_2.addWidget(self.chat_list_area, 0, 0, 1, 1)
         self.gridLayout_2.setColumnStretch(0, 1)
         self.gridLayout_2.setColumnStretch(1, 5)
-        main_window.setCentralWidget(self.centralwidget)
-
-        self.retranslateUi(main_window)
-        QtCore.QMetaObject.connectSlotsByName(main_window)
+        self.setCentralWidget(self.centralwidget)
+        self.retranslateUi(self)
+        QtCore.QMetaObject.connectSlotsByName(self)
 
     def retranslateUi(self, main_window):
         _translate = QtCore.QCoreApplication.translate
@@ -220,8 +230,7 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
 
     def file(self):
         file = QtWidgets.QFileDialog(self.centralwidget).getOpenFileName()
-        print(file[0]) # filename
-        # TO DO: add behavior to adding files
+        self.current_chat_files.append(file[0])
 
     def message(self, name, text, time, img="ui_resourses/res/avatar.jpg"):
         message = message_widget.MessageWidget()
@@ -233,26 +242,43 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.messages_area_layout.setWidget(self.message_counter,
                                             QtWidgets.QFormLayout.FieldRole, message)
         self.message_counter += 1
-        self.send_message_field.setPlainText("")
         self.send_message_field.setFocus()
 
     def send_message(self):
-        text = self.send_message_field.toPlainText()
-        if text == "":
+        item = self.chat_list.currentRow()
+        if item == -1:
             return
-        self.message(self.name, text, "10:00")
-
-    def receive_message(self, sender, message, time):
-        # TO DO: connect behavior for receiving message
-        return
+        text = self.send_message_field.toPlainText()
+        if text == "" and len(self.current_chat_files) == 0:
+            return
+        self.client.send_message(item, text, self.current_chat_files)
+        self.current_chat_files = []
+        self.send_message_field.setPlainText("")
 
     def scroll_to_end(self, _min: int, _max: int):
         position = self.messages_area.verticalScrollBar().sliderPosition()
         self.messages_area.verticalScrollBar().setSliderPosition(position + 10000000)
 
-    def refresh(self):
-        # TO DO: connect behavior to refresh button
-        return
+    def refresh_all(self):
+        for i in range(len(self.chats)):
+            self.refresh(i)
+
+    def refresh(self, item: int = -1):
+        item = self.chat_list.currentRow()
+        if item == -1:
+            return
+        self.clear_chat()
+        self.current_chat = []
+        self.chats[self.chat_list.currentItem().text()] = []
+        chat = self.client.get_chat_data(item)
+        for message in chat:
+            chat_text = ""
+            for blocks in message[3]:
+                if blocks[0] == MessageCodes.TEXT and blocks[1] != "":
+                    chat_text += blocks[1] + "\n"
+                elif blocks[0] == MessageCodes.FILE:
+                    chat_text += f"Received {blocks[1]} file\n"
+            self.message(message[2][:-1], chat_text, str(datetime.datetime.fromtimestamp(message[0]).strftime('%c')))
 
     def chat_changed(self):
         item = self.chat_list.currentItem()
@@ -288,7 +314,6 @@ class Ui_MainWindow(QtWidgets.QMainWindow):
         self.loading_window.exec()
 
     def close_loading_window(self):
-        self.t.stop()
         self.loading_window.close()
 
 
@@ -296,5 +321,5 @@ if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     MainWindow = QtWidgets.QMainWindow()
     ui = Ui_MainWindow(MainWindow)
-    MainWindow.show()
+    ui.show()
     sys.exit(app.exec_())

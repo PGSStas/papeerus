@@ -1,6 +1,5 @@
 import threading
 import time
-from threading import Thread
 from chord.decorators import execute_periodically
 
 
@@ -10,8 +9,9 @@ class MessageContainer:
 
     def __init__(self):
         self.mutex = threading.Lock()
-        thread = Thread(target=self._delete_old_messages)
-        thread.start()
+        self.thread = threading.Thread(target=self._delete_old_messages)
+        self.thread.daemon = True
+        self.thread.start()
 
     def add_message(self, key: int, message: str):
         with self.mutex:

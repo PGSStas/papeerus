@@ -11,18 +11,18 @@ class TokenDialog(QtWidgets.QDialog):
         self.setStyleSheet(self.parent.styleData)
 
         self.setWindowTitle("Ring connection")
-        self.setFixedSize(600, 200)
+        self.setFixedSize(800, 200)
         self.v_layout = QtWidgets.QVBoxLayout(self)
         self.name_label = QtWidgets.QLabel("Enter your name:")
         self.v_layout.addWidget(self.name_label)
         self.name_edit = QtWidgets.QPlainTextEdit()
-        self.name_edit.setFixedSize(582, 30)
+        self.name_edit.setFixedSize(782, 30)
         self.v_layout.addWidget(self.name_edit)
         self.token_label = QtWidgets.QLabel("Enter the ring token or push \"Create\" button "
                                             "to create new ring:")
         self.v_layout.addWidget(self.token_label)
         self.token_edit = QtWidgets.QPlainTextEdit()
-        self.token_edit.setFixedSize(582, 30)
+        self.token_edit.setFixedSize(782, 30)
         self.v_layout.addWidget(self.token_edit)
         self.button_widget = QtWidgets.QWidget(self)
         self.h_layout = QtWidgets.QHBoxLayout(self.button_widget)
@@ -50,7 +50,10 @@ class TokenDialog(QtWidgets.QDialog):
             return
         self.name = self.name_edit.toPlainText()
         self.token = self.token_edit.toPlainText()
-        # TO DO: connect behavior for connecting the existing ring
+        status, _ = self.parent.client.register_network(self.token, self.name)
+        if not status:
+            QtWidgets.QMessageBox.warning(self, "Error", "Nickname was taken")
+            return
         self.parent.name = self.name
         self.parent.token = self.token
         self.done(QDialog.Accepted)
@@ -58,10 +61,9 @@ class TokenDialog(QtWidgets.QDialog):
     def create_ring(self):
         if not self.ring_is_created:
             self.name = self.name_edit.toPlainText()
-            # TO DO: connect behavior for creating a new ring
-            # token = ...
-            self.token = "default"
+            self.token = self.parent.client.create_network(self.name)
             self.token_label.setText("New ring was created. It's token:")
+            self.token_edit.setReadOnly(True)
             self.token_edit.setPlainText(self.token)
             self.create_button.setText("Done")
             self.accept_button.setEnabled(False)
@@ -87,18 +89,18 @@ class ChatAddingDialog(QtWidgets.QDialog):
         self.setStyleSheet(self.parent.styleData)
 
         self.setWindowTitle("Chat adding")
-        self.setFixedSize(600, 200)
+        self.setFixedSize(800, 200)
         self.v_layout = QtWidgets.QVBoxLayout(self)
         self.name_label = QtWidgets.QLabel("Enter chat name:")
         self.v_layout.addWidget(self.name_label)
         self.name_edit = QtWidgets.QPlainTextEdit()
-        self.name_edit.setFixedSize(582, 30)
+        self.name_edit.setFixedSize(782, 30)
         self.v_layout.addWidget(self.name_edit)
         self.token_label = QtWidgets.QLabel("Enter the chat token or push \"Create\" button "
                                             "to create new chat:")
         self.v_layout.addWidget(self.token_label)
         self.token_edit = QtWidgets.QPlainTextEdit()
-        self.token_edit.setFixedSize(582, 30)
+        self.token_edit.setFixedSize(782, 30)
         self.v_layout.addWidget(self.token_edit)
         self.button_widget = QtWidgets.QWidget(self)
         self.h_layout = QtWidgets.QHBoxLayout(self.button_widget)
@@ -124,10 +126,13 @@ class ChatAddingDialog(QtWidgets.QDialog):
         if self.name_edit.toPlainText() == "" or self.token_edit.toPlainText() == "":
             QtWidgets.QMessageBox.warning(self, "Error", "You should fill the fields")
             return
+        if self.name_edit.toPlainText() in self.parent.chats.keys():
+            QtWidgets.QMessageBox.warning(self, "Error", "This chat is already exists")
+            return
 
         self.chat_name = self.name_edit.toPlainText()
         self.chat_token = self.token_edit.toPlainText()
-        # TO DO: connect behavior for connecting the existing chat
+        self.parent.client.enter_chat(self.chat_token)
         self.parent.chat_list.addItem(self.chat_name)
         self.parent.chats[self.chat_name] = []
         self.parent.tokens[self.chat_name] = self.chat_token
@@ -137,12 +142,13 @@ class ChatAddingDialog(QtWidgets.QDialog):
         if not self.ring_is_created:
             self.chat_name = self.name_edit.toPlainText()
             # TO DO: connect behavior for creating a new chat
-            # token = ...
-            self.chat_token = "default"
+            self.chat_token = self.parent.client.create_chat()
             self.token_label.setText("New chat was created. It's token:")
             self.token_edit.setPlainText(self.chat_token)
+            self.token_edit.setReadOnly(True)
             self.create_button.setText("Done")
             self.accept_button.setEnabled(False)
+            self.cancel_button.setEnabled(False)
             self.ring_is_created = True
 
         else:
@@ -156,6 +162,7 @@ class ChatAddingDialog(QtWidgets.QDialog):
             self.done(QDialog.Accepted)
 
     def cancel(self):
+
         self.reject()
 
 
