@@ -1,14 +1,13 @@
 import os
 import pickle
-import random
 import threading
 import json
-import hashlib
 
 from chord.table_node import TableNode
 from chord.decorators import execute_periodically
 from security.chat_cipher import ChatCipher
 from message_codes import MessageCodes
+from exceptions.registration_exeptions import ExistingNameException
 
 
 class Client:
@@ -31,7 +30,10 @@ class Client:
         return self.client_node.generate_invite()
 
     def register_network(self, token: str, nickname: str):
-        return self.client_node.establish_connection(token, nickname)
+        try:
+            return self.client_node.establish_connection(token, nickname)
+        except ExistingNameException as ex:
+            raise ExistingNameException from ex
 
     def create_chat(self):
         self.save_chats()

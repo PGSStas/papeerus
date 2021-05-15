@@ -11,6 +11,7 @@ from hashlib import sha1
 from chord.command_codes import CommandCodes
 from chord.decorators import execute_periodically
 from chord.command_handler import CommandHandler
+from exceptions.registration_exeptions import ExistingNameException
 
 
 # TODO: sort methods to different classes
@@ -33,7 +34,6 @@ class TableNode:
     SUCCESSOR_COUNT = 3
 
     def __init__(self):
-        print(os.getpid())
         # Personal data
         self._id = None
         self.nickname = None
@@ -70,6 +70,10 @@ class TableNode:
         self._receive_thread.daemon = True
         self._receive_thread.start()
         self._balance_thread = None
+
+        # Registration
+        self._registration_status = -1
+        self._peer_nickname_hash = None
 
     @staticmethod
     def in_range(c: int, a: int, b: int):
@@ -140,6 +144,12 @@ class TableNode:
                 self._fixing_fingers = False, -1
                 self._fingers[self._finger_num] = successor
                 self._finger_num = (self._finger_num + 1) % self._m
+            elif sender == -500:
+                print(successor)
+                if successor == self._peer_nickname_hash:
+                    self._registration_status = 0
+                else:
+                    self._registration_status = 1
 
         if sender > 0:
             self.send(sender, str(successor) + " " + key, CommandCodes.RETURN_SUCCESSOR)
@@ -293,9 +303,22 @@ class TableNode:
             nickname = connection[0].recv(32)
             self.log(str(nickname.decode()))
             if status.decode() == "REG":
-                # TODO: check if exists user with the same nickname
+                invite = self.get_invite()
+                self._peer_nickname_hash = self.bytes_to_hash(nickname)
+                peer_key = os.urandom(32).hex()
+                self._successor_query[peer_key] = -500
+                if self._peer_nickname_hash == self._id:
+                    self._registration_status = 0
+                else:
+                    self.find_successor(self._peer_nickname_hash - 1, self._id, peer_key, invite)
+                try:
+                    self.wait_for_registration_status()
+                except ExistingNameException:
+                    connection[0].send("CODE: 101".encode())
+                    continue
                 connection[0].send("CODE: 100".encode())
 
+            self._registration_status = -1
             chat_token = self._generate_chat_token()
             connection[0].send(chat_token.encode())
 
@@ -339,19 +362,24 @@ class TableNode:
             if self.nickname is None:
                 is_reg = True
                 socket_client.send("REG".encode())
-                print("GG")
-                socket_client.send(str(our_nickname).encode())
-                return_code = socket_client.recv(9).decode()
-                if return_code != "CODE: 100":
-                    return False, None
-                self.nickname = our_nickname
-                self._id = self.bytes_to_hash(our_nickname.encode())
+                while True:  # nickname accepted
+                    q = input("Your nickname:\n")
+                    socket_client.send(str(q).encode())
+                    return_code = socket_client.recv(9).decode()
+                    if return_code == "CODE: 100":
+                        break
+                    else:
+                        raise ExistingNameException
+                self.nickname = q
+                self._id = self.bytes_to_hash(q.encode())
             else:
                 socket_client.send("CON".encode())
                 socket_client.send(str(self.nickname).encode())
         except BrokenPipeError:
             print(f"Failed to connect {nickname}")
             return False, None
+        except ExistingNameException as e:
+            raise ExistingNameException from e
 
         iv, message_token = self._parse_chat_token(socket_client.recv(96).decode())
 
@@ -499,7 +527,7 @@ class TableNode:
 
     def find_and_delete_missing(self):
         if self._fixing_successors[0] and (self._fixing_successors[1] not in self._ids \
-                or self._fixing_successors[1] == -1):
+                                           or self._fixing_successors[1] == -1):
             self._fixing_successors = False, -1
         if self._fixing_fingers[0] and (self._fixing_fingers[1] not in self._ids or self._fixing_fingers[1] == -1):
             self._fixing_fingers = False, -1
@@ -552,6 +580,7 @@ class TableNode:
         print("Successor: ", self.successors)
         print("Predecessor", self.predecessor)
         print("Connections", self._peers.keys())
+        print("Fingers", self._fingers)
 
     def get_connections(self):
         ans = self._peers.keys()
@@ -567,3 +596,11 @@ class TableNode:
     @staticmethod
     def bytes_to_hash(x: bytes):
         return int(sha1(x).hexdigest(), 16) % (2 ** 160)
+
+    def wait_for_registration_status(self):
+        time.sleep(1)
+        with self._mutex:
+            if self._registration_status == 1:
+                return
+            elif self._registration_status == 0:
+                raise ExistingNameException

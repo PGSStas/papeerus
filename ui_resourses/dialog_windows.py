@@ -2,6 +2,8 @@ import PyQt5
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import QDialog
 
+from exceptions.registration_exeptions import ExistingNameException
+
 
 class TokenDialog(QtWidgets.QDialog):
     def __init__(self, parent_window):
@@ -50,8 +52,9 @@ class TokenDialog(QtWidgets.QDialog):
             return
         self.name = self.name_edit.toPlainText()
         self.token = self.token_edit.toPlainText()
-        status, _ = self.parent.client.register_network(self.token, self.name)
-        if not status:
+        try:
+            status, _ = self.parent.client.register_network(self.token, self.name)
+        except ExistingNameException:
             QtWidgets.QMessageBox.warning(self, "Error", "Nickname was taken")
             return
         self.parent.name = self.name
