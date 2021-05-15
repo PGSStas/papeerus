@@ -362,16 +362,14 @@ class TableNode:
             if self.nickname is None:
                 is_reg = True
                 socket_client.send("REG".encode())
-                while True:  # nickname accepted
-                    q = input("Your nickname:\n")
-                    socket_client.send(str(q).encode())
-                    return_code = socket_client.recv(9).decode()
-                    if return_code == "CODE: 100":
-                        break
-                    else:
-                        raise ExistingNameException
-                self.nickname = q
-                self._id = self.bytes_to_hash(q.encode())
+                socket_client.send(our_nickname.encode())
+                return_code = socket_client.recv(9).decode()
+                if return_code == "CODE: 101":
+                    raise ExistingNameException
+                elif return_code != "CODE 100":
+                    return False, None
+                self.nickname = our_nickname
+                self._id = self.bytes_to_hash(our_nickname.encode())
             else:
                 socket_client.send("CON".encode())
                 socket_client.send(str(self.nickname).encode())
