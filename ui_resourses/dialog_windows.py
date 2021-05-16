@@ -54,9 +54,16 @@ class TokenDialog(QtWidgets.QDialog):
         self.token = self.token_edit.toPlainText()
         try:
             status, _ = self.parent.client.register_network(self.token, self.name)
+            if not status:
+                QtWidgets.QMessageBox.warning(self, "Error", "Connection problems")
+                return
         except ExistingNameException:
             QtWidgets.QMessageBox.warning(self, "Error", "Nickname was taken")
             return
+        except ValueError:
+            QtWidgets.QMessageBox.warning(self, "Error", "Invalid token")
+            return
+
         self.parent.name = self.name
         self.parent.token = self.token
         self.done(QDialog.Accepted)
